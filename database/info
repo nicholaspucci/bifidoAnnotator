@@ -1,1 +1,11 @@
-The 'database' directory contains the bifDB (MMseqs2 database) of bifidobacterial reference protein sequences and a mapping file with sequence information.
+The 'database' directory contains the mapping file with reference annotations containing:
+   - `Protein_Name`: Reference sequence identifiers
+   - `GH_family`: GH family assignments
+   - `Enzyme`: Enzyme annotations
+   - `Cluster_annotation`: Cluster assignments
+   - `Validation_status`: Quality indicators
+   - `GH_family-F1_threshold`: Identity thresholds for GH family assignment
+   - `GH-cluster threshold`: Identity thresholds for cluster assignment
+   - `HMG-utilization`: HMG-utilization capacity (Yes/No/Unknown).
+
+The bifidoannotator conda package contains the complete curated bifDB database, containig 22,699 reference sequences.
