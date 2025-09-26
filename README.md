@@ -77,7 +77,6 @@ bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o resu
    genome1
    genome2
    genome3
-   ```
 
 5. Annotations file: TSV file with genome metadata for enhanced heatmaps
    ```
