@@ -87,7 +87,6 @@ bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o resu
 
 ## Output Structure
 
-```
 output_directory/
 ├── bifidoAnnotator_log.txt
 ├── bifidoAnnotator_tables/
