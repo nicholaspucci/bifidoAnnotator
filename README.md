@@ -73,7 +73,7 @@ bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o resu
 ### Optional Inputs
 
 4. Sample file: Text file listing genome names (required for batch mode)
-   ```
+   
    genome1
    genome2
    genome3
