@@ -176,8 +176,7 @@ The bifDB reference database and AIMS bifidobacterial proteomes utilized to demo
 Please cite this tool in your publications. If you use this software, consider citing:
 
 ```
-bifidoAnnotator: A comprehensive pipeline for glycoside hydrolase annotation 
-and visualization in bifidobacterial genomes
+bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization
 Authors: Nicholas Pucci & Daniel R. Mende
 ```
 
