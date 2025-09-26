@@ -8,4 +8,4 @@ The 'database' directory contains the mapping file with reference annotations co
    - `GH-cluster threshold`: Identity thresholds for cluster assignment
    - `HMG-utilization`: HMG-utilization capacity (Yes/No/Unknown).
 
-The bifidoannotator conda package contains the complete curated bifDB database, containig 22,699 reference sequences.
+The complete curated bifDB database, containig 22,699 reference sequences, is available on Zenodo (10.5281/zenodo.17206993).
