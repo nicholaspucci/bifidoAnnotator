@@ -170,6 +170,9 @@ The pipeline implements multiple quality control measures:
   - Presence of annotation metadata
 - Manual override available for specific requirements
 
+## Data availability
+The bifDB reference database and AIMS bifidobacterial proteomes utilized to demonstrate bifidoAnnotator's capabilities are available on Zenodo (DOI: 10.5281/zenodo.17206993)
+
 ## Citation
 
 Please cite this tool in your publications. If you use this software, consider citing:
@@ -179,7 +182,6 @@ bifidoAnnotator: A comprehensive pipeline for glycoside hydrolase annotation
 and visualization in bifidobacterial genomes
 Authors: Nicholas Pucci & Daniel R. Mende
 ```
-
 
 ## Support
 
