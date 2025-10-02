@@ -47,7 +47,7 @@ wget https://zenodo.org/records/17206993/files/bifDB_dir.tar.gz
 tar -xvzf bifDB_dir.tar.gz -C database/
 
 #Test run on 9 bifidobacterial genomes
-python run_bifidoAnnotator.py -d Benchmark/ --mapping_file database/mapping_file.tsv --bifdb database/bifDB_dir/bifDB -s Benchmark/genome_list_benchmark.txt  -o bifidoAnnotator_output --annotations_file Benchmark/genome_info_benchmark.txt 
+python script/run_bifidoAnnotator.py -d Benchmark/ --mapping_file database/mapping_file.tsv --bifdb database/bifDB_dir/bifDB -s Benchmark/genome_list_benchmark.txt  -o bifidoAnnotator_output --annotations_file Benchmark/genome_info_benchmark.txt 
 
 ```
 
