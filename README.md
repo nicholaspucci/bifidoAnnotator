@@ -25,6 +25,8 @@ conda install -c bioconda bifidoannotator
 
 # Verify installation
 bifidoAnnotator --help
+
+Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
 ```
 
 ### Manual Installation and test run
@@ -50,8 +52,6 @@ tar -xvzf bifDB_dir.tar.gz -C database/
 python script/run_bifidoAnnotator.py -d Benchmark/ --mapping_file database/mapping_file.tsv --bifdb database/bifDB_dir/bifDB -s Benchmark/genome_list_benchmark.txt  -o bifidoAnnotator_output --annotations_file Benchmark/genome_info_benchmark.txt 
 
 ```
-
-Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
 
 
 ## Usage
