@@ -27,6 +27,30 @@ conda install -c bioconda bifidoannotator
 bifidoAnnotator --help
 ```
 
+### Manual Installation and test run
+```bash
+#Create conda environment
+conda create -n bifidoAnnotator python=3.10
+conda activate bifidoAnnotator
+
+#Install dependencies
+conda install mmseqs2
+pip install pandas
+pip install seaborn
+pip install matplotlib
+pip install scipy
+
+#Download bifidoAnnotator and its resources
+git clone https://github.com/nicholaspucci/bifidoAnnotator.git
+cd bifidoAnnotator
+wget https://zenodo.org/records/17206993/files/bifDB_dir.tar.gz
+tar -xvzf bifDB_dir.tar.gz -C database/
+
+#Test run on 9 bifidobacterial genomes
+python run_bifidoAnnotator.py -d Benchmark/ --mapping_file database/mapping_file.tsv --bifdb database/bifDB_dir/bifDB -s Benchmark/genome_list_benchmark.txt  -o bifidoAnnotator_output --annotations_file Benchmark/genome_info_benchmark.txt 
+
+```
+
 Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
 
 
