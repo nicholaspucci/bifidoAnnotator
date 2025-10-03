@@ -7,6 +7,7 @@ This tool performs hierarchical annotation of GH-encoding genes using MMseqs2,
 generates data matrices, and creates sophisticated heatmaps with automatic size optimization.
 
 Author: Nicholas Pucci & Daniel R. Mende (modified and combined)
+Version: 25
 """
 
 import argparse
@@ -69,6 +70,7 @@ def initialize_log(output_dir, args):
         f.write(f"GH figure size: {'Auto-adaptive' if not args.gh_figsize else f'{args.gh_figsize[0]}x{args.gh_figsize[1]}'}\n")
         f.write(f"Cluster figure size: {'Auto-adaptive' if not args.cluster_figsize else f'{args.cluster_figsize[0]}x{args.cluster_figsize[1]}'}\n")
         f.write(f"Enzyme figure size: {'Auto-adaptive' if not args.enzyme_figsize else f'{args.enzyme_figsize[0]}x{args.enzyme_figsize[1]}'}\n")
+        f.write(f"Heatmap color scheme: {args.heatmap_col}\n")
         f.write("\n")
 
 def log_message(message, print_also=True):
@@ -209,6 +211,8 @@ def parse_arguments():
                        help='Cluster heatmap figure size (width height). If not provided, auto-calculated.')  
     parser.add_argument('--enzyme-figsize', nargs=2, type=int, default=None,
                        help='Enzyme heatmap figure size (width height). If not provided, auto-calculated.')
+    parser.add_argument('-hc', '--heatmap_col', type=str, default='blue', choices=['red', 'blue'],
+                       help='Color scheme for heatmap and annotations (default: blue)')
     
     return parser.parse_args()
 
@@ -538,12 +542,13 @@ def generate_wide_matrices(all_results, output_dir, all_genome_names):
 class HeatmapGenerator:
     """Advanced heatmap generator with improved positioning and color handling"""
     
-    def __init__(self, output_dir, annotations_file=None):
+    def __init__(self, output_dir, annotations_file=None, heatmap_col='red'):
         """Initialize with output directory and optional annotations file"""
         self.output_dir = Path(output_dir)
         self.tables_dir = self.output_dir / 'bifidoAnnotator_tables'
         self.vis_dir = self.output_dir / 'bifidoAnnotator_visualizations'
         self.annotations_file = annotations_file
+        self.heatmap_col = heatmap_col  # Color scheme: 'red' or 'blue'
         
         # Matrix file paths
         self.gh_matrix_file = self.tables_dir / 'gh_family_matrix.tsv'
@@ -628,6 +633,11 @@ class HeatmapGenerator:
         has_annotations = self.annotations is not None
         
         calculated_size = self.calculate_adaptive_figsize(n_genomes, n_features, has_annotations)
+        
+        # Special handling for cluster heatmap: increase cell height by 30%
+        if matrix_name == 'cluster':
+            calculated_size = (calculated_size[0], int(calculated_size[1] * 1.3))
+            log_message(f"  Cluster heatmap: increased height to {calculated_size[1]} inches for better cell visibility", print_also=False)
         
         # Log the calculation
         size_type = "with annotations" if has_annotations else "basic"
@@ -723,7 +733,7 @@ class HeatmapGenerator:
         return True
     
     def calculate_color_scale_for_data(self, data_matrix):
-        """Calculate color scale for specific matrix with high contrast"""
+        """Calculate color scale for specific matrix with custom red or blue palette - adaptive contrast"""
         # Get actual max value in this matrix
         actual_max = int(data_matrix.max().max())
         vmin = 0
@@ -733,75 +743,156 @@ class HeatmapGenerator:
         
         discrete_levels = list(range(vmin, vmax + 1))
         
-        # Create professional white-to-red gradient with high contrast
         if vmin == 0 and vmax > 0:
-            colors = ['#FFFFFF']  # Pure white for 0
+            colors = ['#FFFFFF']  # White for 0
             
-            # High-contrast color selection for visual distinction
-            if vmax == 1:
-                # Binary scale: use contrasting red
-                colors.append('#A50F15')  
-            elif vmax == 2:
-                # Three-level scale: light to medium intensity
-                colors.extend(['#FC9272', '#EF3B2C'])  
-            elif vmax == 3:
-                # Four-level scale: graduated intensity
-                colors.extend(['#FCBBA1', '#FC9272', '#EF3B2C'])  
-            elif vmax == 4:
-                # Five-level scale: well-spaced gradient
-                colors.extend(['#FEE5D9', '#FCBBA1', '#FC9272', '#EF3B2C'])
-            elif vmax <= 6:
-                # Medium range: distinct color steps
-                contrast_palette = ['#FEE5D9', '#FCBBA1', '#FC9272', '#EF3B2C', '#CB181D', '#A50F15']
-                colors.extend(contrast_palette[:vmax])
-            elif vmax <= 10:
-                # Larger range: full gradient with distinct endpoints
-                contrast_palette = ['#FEE5D9', '#FDD0A2', '#FCBBA1', '#FC9272', '#FB6A4A', 
-                                   '#EF3B2C', '#CB181D', '#A50F15', '#67000D', '#4D0000']
-                colors.extend(contrast_palette[:vmax])
-            else:
-                # Extended range: algorithmic gradient generation
-                for i in range(1, vmax + 1):
-                    t = i / vmax  
-                    # Exponential scaling for enhanced contrast
-                    r = 1.0
-                    g = 0.90 * (1 - t**1.8)  
-                    b = 0.90 * (1 - t**1.8)
-                    colors.append((r, g, b, 1.0))
+            if self.heatmap_col == 'blue':
+                # Blue color scale
+                blue_palette = [
+                    '#deebf7',  # Index 0
+                    '#c6dbef',  # Index 1
+                    '#9ecae1',  # Index 2
+                    '#6baed6',  # Index 3
+                    '#4292c6',  # Index 4
+                    '#2171b5',  # Index 5
+                    '#08519c',  # Index 6
+                    '#08306b',  # Index 7
+                    '#041d48',  # Index 8
+                    '#021434'   # Index 9
+                ]
+                
+                # Adaptive contrast: distribute colors based on max value
+                if vmax == 1:
+                    # Single non-zero value: use a strong mid-dark color
+                    colors.append(blue_palette[5])  # #2171b5
+                    log_message(f"  Adaptive contrast (max=1): using high-contrast color", print_also=False)
+                elif vmax == 2:
+                    # Two non-zero values: use medium and dark
+                    colors.extend([blue_palette[2], blue_palette[6]])  # #9ecae1, #08519c
+                    log_message(f"  Adaptive contrast (max=2): spreading across palette", print_also=False)
+                elif vmax == 3:
+                    # Three values: light-medium, medium, dark
+                    colors.extend([blue_palette[1], blue_palette[4], blue_palette[7]])  # #c6dbef, #4292c6, #08306b
+                    log_message(f"  Adaptive contrast (max=3): using distributed colors", print_also=False)
+                elif vmax == 4:
+                    # Four values: well-distributed
+                    colors.extend([blue_palette[1], blue_palette[3], blue_palette[5], blue_palette[8]])
+                    log_message(f"  Adaptive contrast (max=4): distributed contrast", print_also=False)
+                elif vmax == 5:
+                    # Five values: spread across palette
+                    colors.extend([blue_palette[0], blue_palette[2], blue_palette[4], blue_palette[6], blue_palette[8]])
+                    log_message(f"  Adaptive contrast (max=5): even distribution", print_also=False)
+                elif vmax <= 10:
+                    # Use palette sequentially for 6-10
+                    colors.extend(blue_palette[:vmax])
+                    log_message(f"  Sequential colors (max={vmax})", print_also=False)
+                else:
+                    # Use all 10 palette colors, then progressively darker
+                    colors.extend(blue_palette)
+                    for i in range(11, vmax + 1):
+                        t = (i - 10) / max(1, vmax - 10)
+                        r = int(0x02 * (1 - t * 0.5))
+                        g = int(0x14 * (1 - t * 0.5))
+                        b = int(0x34 * (1 - t * 0.3))
+                        colors.append(f'#{r:02x}{g:02x}{b:02x}')
+                    log_message(f"  Extended range (max={vmax})", print_also=False)
+                
+                cmap = ListedColormap(colors, name=f'custom_blue_scale_{vmax}')
+                
+            else:  # 'red' (default)
+                # Red color scale
+                red_palette = [
+                    '#fcbba1',  # Index 0
+                    '#fc9272',  # Index 1
+                    '#fb6a4a',  # Index 2
+                    '#ef3b2c',  # Index 3
+                    '#cb181d',  # Index 4
+                    '#a50f15',  # Index 5
+                    '#67000d',  # Index 6
+                    '#4a0009',  # Index 7
+                    '#330006'   # Index 8
+                ]
+                
+                # Adaptive contrast: distribute colors based on max value
+                if vmax == 1:
+                    # Single non-zero value: use a strong mid-dark color
+                    colors.append(red_palette[4])  # #cb181d
+                    log_message(f"  Adaptive contrast (max=1): using high-contrast color", print_also=False)
+                elif vmax == 2:
+                    # Two non-zero values: use medium and dark
+                    colors.extend([red_palette[2], red_palette[5]])  # #fb6a4a, #a50f15
+                    log_message(f"  Adaptive contrast (max=2): spreading across palette", print_also=False)
+                elif vmax == 3:
+                    # Three values: light-medium, medium, dark
+                    colors.extend([red_palette[1], red_palette[3], red_palette[6]])  # #fc9272, #ef3b2c, #67000d
+                    log_message(f"  Adaptive contrast (max=3): using distributed colors", print_also=False)
+                elif vmax == 4:
+                    # Four values: well-distributed
+                    colors.extend([red_palette[1], red_palette[3], red_palette[5], red_palette[7]])
+                    log_message(f"  Adaptive contrast (max=4): distributed contrast", print_also=False)
+                elif vmax == 5:
+                    # Five values: spread across palette
+                    colors.extend([red_palette[0], red_palette[2], red_palette[4], red_palette[6], red_palette[8]])
+                    log_message(f"  Adaptive contrast (max=5): even distribution", print_also=False)
+                elif vmax <= 9:
+                    # Use palette sequentially for 6-9
+                    colors.extend(red_palette[:vmax])
+                    log_message(f"  Sequential colors (max={vmax})", print_also=False)
+                else:
+                    # Use all 9 palette colors, then progressively darker
+                    colors.extend(red_palette)
+                    for i in range(10, vmax + 1):
+                        t = (i - 9) / max(1, vmax - 9)
+                        r = int(0x33 * (1 - t * 0.3))
+                        colors.append(f'#{r:02x}0006')
+                    log_message(f"  Extended range (max={vmax})", print_also=False)
+                
+                cmap = ListedColormap(colors, name=f'custom_red_scale_{vmax}')
             
-            cmap = ListedColormap(colors, name=f'high_contrast_white_to_red_{vmax}')
-            
-            # Log colors
-            log_message(f"  High-contrast {len(colors)} colors for 0-{vmax}:", print_also=False)
-            for i, color in enumerate(colors[:min(len(colors), 5)]):
-                hex_color = mcolors.to_hex(color) if not isinstance(color, str) else color
-                log_message(f"    {i}: {hex_color}", print_also=False)
+            # Log colors for verification
+            for i, color in enumerate(colors[:min(len(colors), 11)]):
+                log_message(f"    {i}: {color}", print_also=False)
             
             return cmap, vmin, vmax, discrete_levels
         else:
-            return 'Reds', 0, 1, [0, 1]
+            return 'Reds' if self.heatmap_col == 'red' else 'Blues', 0, 1, [0, 1]
     
     def setup_annotation_colors(self):
-        """Create color mapping with distinct palettes per annotation row - no color overlap"""
+        """Create color mapping with distinct palettes per annotation row"""
         if self.annotations is None or len(self.annotation_columns) == 0:
             return
             
-        log_message(f"Setting up distinct cold color palettes for {len(self.annotation_columns)} annotation columns...", print_also=False)
+        log_message(f"Setting up distinct color palettes for {len(self.annotation_columns)} annotation columns (scheme: {self.heatmap_col})...", print_also=False)
         
-        # Cold color palettes to avoid conflicts with warm-colored heatmap data
-        color_palettes = [
-            # Palette 1: Blues and teals
-            ['#1f77b4', '#aec7e8', '#17becf', '#9edae5', '#2E86C1', '#5DADE2', '#85C1E9', '#AED6F1'],
-            
-            # Palette 2: Greens and mints
-            ['#2ca02c', '#98df8a', '#27AE60', '#58D68D', '#82E0AA', '#A9DFBF', '#52BE80', '#76D7C4'],
-            
-            # Palette 3: Purples and lavenders
-            ['#9467bd', '#c5b0d5', '#8E44AD', '#BB8FCE', '#D2B4DE', '#E8DAEF', '#A569BD', '#CD6155'],
-            
-            # Palette 4: Cool greys and neutrals
-            ['#7f7f7f', '#c7c7c7', '#566573', '#85929E', '#AEB6BF', '#D5DBDB', '#5D6D7E', '#ABB2B9']
-        ]
+        if self.heatmap_col == 'blue':
+            # Blue heatmap scheme: use warm colors for annotations
+            color_palettes = [
+                # Palette 1: Red-Yellow-Green diverging (9 colors)
+                ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
+                
+                # Palette 2: Categorical bright colors (9 colors)
+                ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf', '#999999'],
+                
+                # Palette 3: Grayscale (9 colors) - reserved for LAST column (bottom bar)
+                ['#6b6b6b', '#8a8a8a', '#a8a8a8', '#bebebe', '#d0d0d0', '#dddddd', '#e8e8e8', '#f2f2f2', '#ffffff']
+            ]
+        else:  # 'red' (default)
+            # Red heatmap scheme: use cool colors for annotations
+            color_palettes = [
+                # Palette 1: Purple-Green diverging (9 colors)
+                ['#762a83', '#9970ab', '#c2a5cf', '#e7d4e8', '#f7f7f7', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837'],
+                
+                # Palette 2: Pink-Green diverging (9 colors)
+                ['#c51b7d', '#de77ae', '#f1b6da', '#fde0ef', '#f7f7f7', '#e6f5d0', '#b8e186', '#7fbc41', '#4d9221'],
+                
+                # Palette 3: Brown-Teal diverging (9 colors)
+                ['#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#f5f5f5', '#c7eae5', '#80cdc1', '#35978f', '#01665e'],
+                
+                # Palette 4: Grayscale (9 colors) - reserved for LAST column (bottom bar)
+                ['#6b6b6b', '#8a8a8a', '#a8a8a8', '#bebebe', '#d0d0d0', '#dddddd', '#e8e8e8', '#f2f2f2', '#ffffff']
+            ]
+        
+        n_cols = len(self.annotation_columns)
         
         for i, col in enumerate(self.annotation_columns):
             # Handle missing values
@@ -813,9 +904,22 @@ class HeatmapGenerator:
             
             log_message(f"  {col}: {n_values} unique values", print_also=False)
             
-            # Choose palette - each row gets distinct palette
-            palette_idx = i % len(color_palettes)
-            chosen_palette = color_palettes[palette_idx]
+            # LAST column (closest to heatmap) always gets grayscale
+            if i == n_cols - 1:
+                palette_idx = len(color_palettes) - 1  # Grayscale (last palette)
+                chosen_palette = color_palettes[palette_idx]
+                log_message(f"    Assigning GRAYSCALE to '{col}' (bottom bar, closest to heatmap)", print_also=False)
+            else:
+                # Other columns cycle through diverging palettes (excluding grayscale)
+                palette_idx = i % (len(color_palettes) - 1)
+                chosen_palette = color_palettes[palette_idx]
+                # REVERSE the palette to prioritize COLD colors (right side) first for diverging schemes
+                # For categorical schemes (blue mode), don't reverse
+                if self.heatmap_col == 'red' and palette_idx < 3:  # Only reverse diverging palettes
+                    chosen_palette = list(reversed(chosen_palette))
+                    log_message(f"    Using palette {palette_idx + 1} (reversed to favor cold colors) for '{col}'", print_also=False)
+                else:
+                    log_message(f"    Using palette {palette_idx + 1} for '{col}'", print_also=False)
             
             # Create color mapping
             color_dict = {}
@@ -835,7 +939,7 @@ class HeatmapGenerator:
             
             self.annotation_colors[col] = color_dict
         
-        log_message("Distinct cold color palettes assigned - no overlap with heatmap data colors", print_also=False)
+        log_message("Distinct color palettes assigned for annotations", print_also=False)
     
     def calculate_dynamic_positions(self, heatmap_ax, fig, n_annotation_rows, show_column_labels, n_features):
         """Calculate positions with no overlaps - adaptive spacing based on number of features"""
@@ -886,6 +990,7 @@ class HeatmapGenerator:
     def create_clustermap(self, data, title, output_file_base, manual_figsize=None, matrix_name='unknown'):
         """Create a hierarchically clustered heatmap"""
         log_message(f"Creating: {title}")
+        log_message(f"  DEBUG: matrix_name = '{matrix_name}'", print_also=True)
         
         # Determine figure size
         figsize = self.determine_figsize(matrix_name, manual_figsize)
@@ -898,6 +1003,7 @@ class HeatmapGenerator:
         # Create annotation colors for each column if annotations exist
         annotation_color_lists = []
         if self.annotations is not None and len(self.annotation_columns) > 0:
+            log_message(f"  DEBUG: Creating annotation color lists from {len(self.annotation_columns)} columns", print_also=True)
             genome_order = data_t.columns
             
             for col in self.annotation_columns:
@@ -912,7 +1018,9 @@ class HeatmapGenerator:
                         color_list.append('white')
                 annotation_color_lists.append(color_list)
             
-            log_message(f"  Created {len(annotation_color_lists)} annotation color rows", print_also=False)
+            log_message(f"  DEBUG: Created {len(annotation_color_lists)} annotation color rows with {len(annotation_color_lists[0])} colors each", print_also=True)
+        else:
+            log_message(f"  DEBUG: No annotations available", print_also=True)
         
         # Filter out features with all zeros
         non_zero_features = (data_t.sum(axis=1) > 0)
@@ -957,8 +1065,20 @@ class HeatmapGenerator:
             
             colors_ratio = base_ratio * n_annotation_bars
             
-            # Ensure reasonable bounds
-            colors_ratio = max(0.03, min(0.20, colors_ratio))
+            # Special adjustment for cluster heatmap: 
+            # Since figure height is increased by 30%, we need to compensate
+            # to keep annotation bars at a reasonable absolute size
+            if matrix_name == 'cluster':
+                # Don't reduce - instead keep the same absolute size by adjusting for height increase
+                # The height was multiplied by 1.3, so we divide the ratio by 1.3 to maintain absolute size
+                # Then add a bit more to make them slightly smaller relative to cells
+                colors_ratio = (colors_ratio / 1.3) * 0.85
+                # Ensure minimum for visibility
+                colors_ratio = max(0.035, colors_ratio)
+                log_message(f"  Cluster heatmap: adjusted annotation bar ratio for tall figure (final ratio: {colors_ratio:.3f})", print_also=False)
+            else:
+                # Apply bounds for non-cluster heatmaps
+                colors_ratio = max(0.03, min(0.20, colors_ratio))
             
             log_message(f"  Annotation bars: {n_annotation_bars} bars at ratio {colors_ratio:.3f} (base={base_ratio:.3f} for {n_genomes} genomes)", print_also=False)
         else:
@@ -966,7 +1086,9 @@ class HeatmapGenerator:
         
         log_message(f"  Dendrogram ratio: {dendrogram_ratio}, Colors ratio: {colors_ratio:.3f}", print_also=False)
         
-        # Create clustermap with discrete colors
+        log_message(f"  DEBUG: About to create clustermap with colors_ratio={colors_ratio:.4f}, has_annotations={len(annotation_color_lists) > 0}", print_also=True)
+        
+        # Create clustermap with discrete colors and black borders
         if annotation_color_lists:
             g = sns.clustermap(
                 data_filtered,
@@ -978,7 +1100,8 @@ class HeatmapGenerator:
                 dendrogram_ratio=dendrogram_ratio,
                 colors_ratio=colors_ratio,
                 col_colors=annotation_color_lists,
-                linewidths=0,
+                linewidths=1.5,
+                linecolor='black',
                 xticklabels=show_column_labels,
                 yticklabels=True,
                 tree_kws={'linewidths': 1.5}
@@ -992,7 +1115,8 @@ class HeatmapGenerator:
                 norm=norm,  
                 figsize=figsize,
                 dendrogram_ratio=dendrogram_ratio,
-                linewidths=0,
+                linewidths=1.5,
+                linecolor='black',
                 xticklabels=show_column_labels,
                 yticklabels=True,
                 tree_kws={'linewidths': 1.5}
@@ -1001,6 +1125,15 @@ class HeatmapGenerator:
         # Hide default colorbar completely
         if hasattr(g, 'ax_cbar') and g.ax_cbar is not None:
             g.ax_cbar.remove()
+        
+        # DEBUG: Check if annotation bars were created
+        if annotation_color_lists:
+            if hasattr(g, 'ax_col_colors') and g.ax_col_colors is not None:
+                log_message(f"  DEBUG: ax_col_colors EXISTS and is visible", print_also=True)
+                col_colors_pos = g.ax_col_colors.get_position()
+                log_message(f"  DEBUG: ax_col_colors position: x={col_colors_pos.x0:.3f}, y={col_colors_pos.y0:.3f}, width={col_colors_pos.width:.3f}, height={col_colors_pos.height:.3f}", print_also=True)
+            else:
+                log_message(f"  DEBUG: ax_col_colors is NONE or doesn't exist! Annotation bars not created by seaborn!", print_also=True)
         
         # Apply layout adjustments for proper spacing
         if show_column_labels:
@@ -1014,12 +1147,16 @@ class HeatmapGenerator:
         bottom_space = max(bottom_space, 0.25)
         
         # Top space allocation for dendrogram visibility
-        top_space = 0.85 - (len(annotation_color_lists) * 0.02)  
+        # For cluster heatmap (tall figure), need more space for annotation bars
+        if matrix_name == 'cluster':
+            top_space = 0.92 - (len(annotation_color_lists) * 0.015)  # More room at top
+        else:
+            top_space = 0.85 - (len(annotation_color_lists) * 0.02)
         
         plt.subplots_adjust(
             left=0.12,    # Left margin for row labels
             right=0.75,   # Right margin for colorbar placement
-            top=top_space,      # Top space for dendrogram    
+            top=top_space,      # Top space for dendrogram and annotations
             bottom=bottom_space  # Bottom space for legends
         )
         
@@ -1425,7 +1562,7 @@ def main():
         
         # Generate advanced heatmaps
         log_section("VISUALIZATION GENERATION")
-        heatmap_generator = HeatmapGenerator(args.output_dir, args.annotations_file)
+        heatmap_generator = HeatmapGenerator(args.output_dir, args.annotations_file, args.heatmap_col)
         heatmap_success = heatmap_generator.generate_heatmaps(
             gh_figsize=args.gh_figsize,
             cluster_figsize=args.cluster_figsize,
