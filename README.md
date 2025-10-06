@@ -20,7 +20,7 @@ bifidoAnnotator addresses the critical gap in annotation workflows by providing 
 
 ### Conda Installation 
 ```bash
-# Install bifidoAnnotator with all dependencies and packaged database
+# Install bifidoAnnotator with all dependencies and packaged database (Recommended)
 conda install -c bioconda bifidoannotator
 
 # Verify installation
