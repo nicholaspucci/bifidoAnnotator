@@ -28,6 +28,17 @@ bifidoAnnotator --help
 
 Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
 ```
+### pip installation (Requires separate MMseqs2 installation)
+```bash
+#Install MMseqs2 first
+conda install mmseqs2
+
+#Then install bifidoAnnotator
+pip install bifidoannotator
+
+#Verify installation
+bifidoAnnotator --help
+```
 
 ### Manual Installation and test run
 ```bash
@@ -37,10 +48,7 @@ conda activate bifidoAnnotator
 
 #Install dependencies
 conda install mmseqs2
-pip install pandas
-pip install seaborn
-pip install matplotlib
-pip install scipy
+pip install pandas seaborn matplotlib scipy
 
 #Download bifidoAnnotator and its resources
 git clone https://github.com/nicholaspucci/bifidoAnnotator.git
@@ -156,9 +164,11 @@ output_directory/
 - `--annotations_file`: Genome metadata for enhanced visualizations
 - `--threads`: Number of threads for MMseqs2 (default: 4)
 - `--sensitivity`: MMseqs2 sensitivity (default: 7.5)
+- `-hc, --heatmap_col`: Color scheme - 'red' or 'blue' (default: blue)
 - `--gh-figsize`: GH heatmap dimensions (width height)
 - `--cluster-figsize`: Cluster heatmap dimensions (width height)  
 - `--enzyme-figsize`: Enzyme heatmap dimensions (width height)
+
 
 ### Annotation Thresholds
 - Coverage threshold: 50% minimum alignment coverage
@@ -184,6 +194,7 @@ The pipeline implements multiple quality control measures:
 - Publication ready: High-resolution outputs with professional styling
 - Adaptive sizing: Automatic dimension calculation based on data size
 - Annotation integration: Metadata bars with custom color palettes
+- Blue color scheme by default (red available via --heatmap_col/-hc red)
 
 ### Size Optimization
 - Auto-calculates optimal dimensions based on:
@@ -204,9 +215,17 @@ bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases
 Authors: Nicholas Pucci & Daniel R. Mende
 ```
 
-## Support
+### Links
+GitHub: https://github.com/nicholaspucci/bifidoAnnotator
+PyPI: https://pypi.org/project/bifidoannotator/
+Bioconda: (pending approval)
+Database (Zenodo): https://doi.org/10.5281/zenodo.17206993
 
+## Support
 For questions, bug reports, or feature requests, please open an issue on GitHub or contact the authors.
+
+## License
+MIT License - see LICENSE file for details
 
 ## Version History
 
