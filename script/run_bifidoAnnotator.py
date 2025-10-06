@@ -7,7 +7,7 @@ This tool performs hierarchical annotation of GH-encoding genes using MMseqs2,
 generates data matrices, and creates sophisticated heatmaps with automatic size optimization.
 
 Author: Nicholas Pucci & Daniel R. Mende (modified and combined)
-Version: 25
+Version: 25 - Fixed annotation color alternation, suppressed font warnings and debug messages
 """
 
 import argparse
@@ -29,7 +29,11 @@ from scipy.spatial.distance import pdist
 import warnings
 import datetime
 import time
+import logging
 warnings.filterwarnings('ignore')
+
+# Suppress matplotlib font warnings
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
 
 # Global variables for logging
 LOG_FILE = None
@@ -911,13 +915,19 @@ class HeatmapGenerator:
                 log_message(f"    Assigning GRAYSCALE to '{col}' (bottom bar, closest to heatmap)", print_also=False)
             else:
                 # Other columns cycle through diverging palettes (excluding grayscale)
-                palette_idx = i % (len(color_palettes) - 1)
+                available_palettes = len(color_palettes) - 1  # Exclude grayscale
+                palette_idx = i % available_palettes
                 chosen_palette = color_palettes[palette_idx]
-                # REVERSE the palette to prioritize COLD colors (right side) first for diverging schemes
-                # For categorical schemes (blue mode), don't reverse
-                if self.heatmap_col == 'red' and palette_idx < 3:  # Only reverse diverging palettes
-                    chosen_palette = list(reversed(chosen_palette))
-                    log_message(f"    Using palette {palette_idx + 1} (reversed to favor cold colors) for '{col}'", print_also=False)
+                
+                # Alternate reversal direction: even bars reversed (cold colors first), odd bars normal (warm colors first)
+                if self.heatmap_col == 'red':
+                    if i % 2 == 0:
+                        # Even bars: reverse to start with cold colors (green/teal side)
+                        chosen_palette = list(reversed(chosen_palette))
+                        log_message(f"    Using palette {palette_idx + 1} (reversed - cold colors first) for '{col}'", print_also=False)
+                    else:
+                        # Odd bars: keep normal to start with warm colors (purple/pink/brown side)
+                        log_message(f"    Using palette {palette_idx + 1} (normal - warm colors first) for '{col}'", print_also=False)
                 else:
                     log_message(f"    Using palette {palette_idx + 1} for '{col}'", print_also=False)
             
@@ -990,7 +1000,6 @@ class HeatmapGenerator:
     def create_clustermap(self, data, title, output_file_base, manual_figsize=None, matrix_name='unknown'):
         """Create a hierarchically clustered heatmap"""
         log_message(f"Creating: {title}")
-        log_message(f"  DEBUG: matrix_name = '{matrix_name}'", print_also=True)
         
         # Determine figure size
         figsize = self.determine_figsize(matrix_name, manual_figsize)
@@ -1003,7 +1012,6 @@ class HeatmapGenerator:
         # Create annotation colors for each column if annotations exist
         annotation_color_lists = []
         if self.annotations is not None and len(self.annotation_columns) > 0:
-            log_message(f"  DEBUG: Creating annotation color lists from {len(self.annotation_columns)} columns", print_also=True)
             genome_order = data_t.columns
             
             for col in self.annotation_columns:
@@ -1017,10 +1025,6 @@ class HeatmapGenerator:
                     else:
                         color_list.append('white')
                 annotation_color_lists.append(color_list)
-            
-            log_message(f"  DEBUG: Created {len(annotation_color_lists)} annotation color rows with {len(annotation_color_lists[0])} colors each", print_also=True)
-        else:
-            log_message(f"  DEBUG: No annotations available", print_also=True)
         
         # Filter out features with all zeros
         non_zero_features = (data_t.sum(axis=1) > 0)
@@ -1086,8 +1090,6 @@ class HeatmapGenerator:
         
         log_message(f"  Dendrogram ratio: {dendrogram_ratio}, Colors ratio: {colors_ratio:.3f}", print_also=False)
         
-        log_message(f"  DEBUG: About to create clustermap with colors_ratio={colors_ratio:.4f}, has_annotations={len(annotation_color_lists) > 0}", print_also=True)
-        
         # Create clustermap with discrete colors and black borders
         if annotation_color_lists:
             g = sns.clustermap(
@@ -1125,15 +1127,6 @@ class HeatmapGenerator:
         # Hide default colorbar completely
         if hasattr(g, 'ax_cbar') and g.ax_cbar is not None:
             g.ax_cbar.remove()
-        
-        # DEBUG: Check if annotation bars were created
-        if annotation_color_lists:
-            if hasattr(g, 'ax_col_colors') and g.ax_col_colors is not None:
-                log_message(f"  DEBUG: ax_col_colors EXISTS and is visible", print_also=True)
-                col_colors_pos = g.ax_col_colors.get_position()
-                log_message(f"  DEBUG: ax_col_colors position: x={col_colors_pos.x0:.3f}, y={col_colors_pos.y0:.3f}, width={col_colors_pos.width:.3f}, height={col_colors_pos.height:.3f}", print_also=True)
-            else:
-                log_message(f"  DEBUG: ax_col_colors is NONE or doesn't exist! Annotation bars not created by seaborn!", print_also=True)
         
         # Apply layout adjustments for proper spacing
         if show_column_labels:
