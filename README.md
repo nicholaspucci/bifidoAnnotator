@@ -16,7 +16,7 @@ bifidoAnnotator addresses the critical gap in annotation workflows by providing 
 - Publication quality: Vector graphics (PDF) and high-resolution raster (PNG) outputs
 - Detailed logging: Complete analysis tracking and statistics
 
-## Installation
+## Installation (python3 version ≥ 3.10 required)
 
 ### Conda Installation 
 ```bash
