@@ -14,7 +14,7 @@ bifidoAnnotator addresses the critical gap in annotation workflows by providing 
 - Comprehensive output: Detailed tables, summary matrices, and publication-ready visualizations
 - Adaptive visualization: Auto-sizing heatmaps with optional manual control
 - Publication quality: Vector graphics (PDF) and high-resolution raster (PNG) outputs
-- Detailed logging: Complete analysis tracking and statistics
+- Detailed logging: Complete analysis tracking
 
 ## Installation (python3 version ≥ 3.10 required)
 
