@@ -1,0 +1,10 @@
+BbifidumPRL2010
+BbreveUCC2003
+BCkashiJCM15439
+BLinfantisATCC15697
+BLlongumJCM1217
+BLlongumSC596
+BLsuisJDM301
+BpseudoJCM1200
+BscardoviiJCM12489
+

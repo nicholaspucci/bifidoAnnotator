@@ -1,0 +1,10 @@
+Genome	Species	Source
+BbifidumPRL2010	B. bifidum	Infant stool
+BbreveUCC2003	B. breve	NA
+BCkashiJCM15439	B. catenulatum	Type strain
+BLinfantisATCC15697	B. longum	Type strain
+BLlongumJCM1217	B. longum	Type strain
+BLlongumSC596	B. longum	Infant stool
+BLsuisJDM301	B. longum	NA
+BpseudoJCM1200	B. pseudocatenulatum	Type strain
+BscardoviiJCM12489	B. scardovii	Type strain

@@ -14,19 +14,25 @@ bifidoAnnotator addresses the critical gap in annotation workflows by providing 
 - Comprehensive output: Detailed tables, summary matrices, and publication-ready visualizations
 - Adaptive visualization: Auto-sizing heatmaps with optional manual control
 - Publication quality: Vector graphics (PDF) and high-resolution raster (PNG) outputs
-- Detailed logging: Complete analysis tracking and statistics
+- Detailed logging: Complete analysis tracking
 
-## Installation (Requires python≥3.10)
+## Installation (python≥3.10 required)
 
 ### Conda Installation 
 ```bash
 # Install bifidoAnnotator with all dependencies and packaged database (Recommended)
 conda install -c bioconda bifidoannotator
 
+# Create a directory for bifidoAnnotator resources
+mkdir -p bifidoAnnotator_resources
+cd bifidoAnnotator_resources
+wget https://zenodo.org/records/17206993/files/bifDB_dir.tar.gz
+tar -xvzf bifDB_dir.tar.gz
+wget https://raw.githubusercontent.com/nicholaspucci/bifidoAnnotator/main/database/mapping_file.txt -O mapping_file.tsv
+
 # Verify installation
 bifidoAnnotator --help
 
-Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
 ```
 ### pip installation (Requires separate MMseqs2 installation)
 ```bash
