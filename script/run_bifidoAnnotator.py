@@ -7,7 +7,7 @@ This tool performs hierarchical annotation of GH-encoding genes using MMseqs2,
 generates data matrices, and creates sophisticated heatmaps with automatic size optimization.
 
 Author: Nicholas Pucci & Daniel R. Mende (modified and combined)
-Version: 25 - Fixed annotation color alternation, suppressed font warnings and debug messages
+Version: 34 - Updated to use ColorBrewer Dark2 for top annotation bars in both schemes
 """
 
 import argparse
@@ -868,33 +868,28 @@ class HeatmapGenerator:
             
         log_message(f"Setting up distinct color palettes for {len(self.annotation_columns)} annotation columns (scheme: {self.heatmap_col})...", print_also=False)
         
-        if self.heatmap_col == 'blue':
-            # Blue heatmap scheme: use warm colors for annotations
-            color_palettes = [
-                # Palette 1: Red-Yellow-Green diverging (9 colors)
-                ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
-                
-                # Palette 2: Categorical bright colors (9 colors)
-                ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf', '#999999'],
-                
-                # Palette 3: Grayscale (9 colors) - reserved for LAST column (bottom bar)
-                ['#6b6b6b', '#8a8a8a', '#a8a8a8', '#bebebe', '#d0d0d0', '#dddddd', '#e8e8e8', '#f2f2f2', '#ffffff']
-            ]
-        else:  # 'red' (default)
-            # Red heatmap scheme: use cool colors for annotations
-            color_palettes = [
-                # Palette 1: Purple-Green diverging (9 colors)
-                ['#762a83', '#9970ab', '#c2a5cf', '#e7d4e8', '#f7f7f7', '#d9f0d3', '#a6dba0', '#5aae61', '#1b7837'],
-                
-                # Palette 2: Pink-Green diverging (9 colors)
-                ['#c51b7d', '#de77ae', '#f1b6da', '#fde0ef', '#f7f7f7', '#e6f5d0', '#b8e186', '#7fbc41', '#4d9221'],
-                
-                # Palette 3: Brown-Teal diverging (9 colors)
-                ['#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#f5f5f5', '#c7eae5', '#80cdc1', '#35978f', '#01665e'],
-                
-                # Palette 4: Grayscale (9 colors) - reserved for LAST column (bottom bar)
-                ['#6b6b6b', '#8a8a8a', '#a8a8a8', '#bebebe', '#d0d0d0', '#dddddd', '#e8e8e8', '#f2f2f2', '#ffffff']
-            ]
+        # ColorBrewer Dark2 - used for BOTH blue and red schemes as top bar palette
+        dark2_palette = ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', 
+                         '#66a61e', '#e6ab02', '#a6761d', '#666666']
+        
+        # Define Set3-like palette colors for reference (to avoid overlap)
+        set3_colors = ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', 
+                       '#fdb462', '#b3de69', '#fccde5', '#d9d9d9']
+        
+        # Both schemes now use the same palette structure
+        color_palettes = [
+            # Palette 1: ColorBrewer Dark2 (8 colors) - for top bars
+            dark2_palette,
+            
+            # Palette 2: Backup palette (cycling)
+            ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf'],
+            
+            # Palette 3: Grayscale with MAXIMUM contrast (9 colors) - RESERVED for SECOND-TO-LAST bar
+            ['#404040', '#595959', '#737373', '#8c8c8c', '#a6a6a6', '#bfbfbf', '#d9d9d9', '#e6e6e6', '#f0f0f0'],
+            
+            # Palette 4: Custom Set3-like palette (9 colors) - RESERVED for BOTTOM bar
+            set3_colors
+        ]
         
         n_cols = len(self.annotation_columns)
         
@@ -908,41 +903,117 @@ class HeatmapGenerator:
             
             log_message(f"  {col}: {n_values} unique values", print_also=False)
             
-            # LAST column (closest to heatmap) always gets grayscale
+            # BOTTOM BAR (closest to heatmap) - gets Set3-like palette
             if i == n_cols - 1:
-                palette_idx = len(color_palettes) - 1  # Grayscale (last palette)
+                palette_idx = len(color_palettes) - 1  # Last palette (index 3)
                 chosen_palette = color_palettes[palette_idx]
-                log_message(f"    Assigning GRAYSCALE to '{col}' (bottom bar, closest to heatmap)", print_also=False)
+                is_dark2_palette = False
+                log_message(f"    Assigning CUSTOM SET3-LIKE to '{col}' (bottom bar, closest to heatmap)", print_also=False)
+            
+            # SECOND-TO-LAST BAR - gets grayscale
+            elif i == n_cols - 2:
+                palette_idx = len(color_palettes) - 2  # Second-to-last palette (index 2 - grayscale)
+                chosen_palette = color_palettes[palette_idx]
+                is_dark2_palette = False
+                log_message(f"    Assigning GRAYSCALE to '{col}' (second-to-last bar)", print_also=False)
+            
+            # OTHER BARS (top bars) - use Dark2 or cycle
             else:
-                # Other columns cycle through diverging palettes (excluding grayscale)
-                available_palettes = len(color_palettes) - 1  # Exclude grayscale
+                # Other columns cycle through Dark2 and backup palette (excluding grayscale and bottom palette)
+                available_palettes = len(color_palettes) - 2  # Exclude last 2 (grayscale and bottom)
                 palette_idx = i % available_palettes
                 chosen_palette = color_palettes[palette_idx]
+                is_dark2_palette = (palette_idx == 0)  # Dark2 is always palette 0 now
                 
-                # Alternate reversal direction: even bars reversed (cold colors first), odd bars normal (warm colors first)
-                if self.heatmap_col == 'red':
-                    if i % 2 == 0:
-                        # Even bars: reverse to start with cold colors (green/teal side)
-                        chosen_palette = list(reversed(chosen_palette))
-                        log_message(f"    Using palette {palette_idx + 1} (reversed - cold colors first) for '{col}'", print_also=False)
-                    else:
-                        # Odd bars: keep normal to start with warm colors (purple/pink/brown side)
-                        log_message(f"    Using palette {palette_idx + 1} (normal - warm colors first) for '{col}'", print_also=False)
+                if is_dark2_palette:
+                    log_message(f"    Using ColorBrewer Dark2 for '{col}'", print_also=False)
                 else:
-                    log_message(f"    Using palette {palette_idx + 1} for '{col}'", print_also=False)
+                    log_message(f"    Using backup palette {palette_idx + 1} for '{col}'", print_also=False)
             
-            # Create color mapping
+            # Create color mapping with maximum divergence
             color_dict = {}
-            color_idx = 0
             
+            # Select maximally divergent color indices from palette
+            palette_size = len(chosen_palette)
+            if n_non_na_values <= palette_size:
+                if is_dark2_palette:
+                    # Special handling for Dark2 palette - qualitative, not diverging
+                    # Dark2 colors: [0]Teal, [1]Orange, [2]Purple, [3]Magenta, [4]Olive, [5]Yellow, [6]Brown, [7]Gray
+                    if n_non_na_values == 1:
+                        color_indices = [0]  # Teal
+                    elif n_non_na_values == 2:
+                        color_indices = [0, 1]  # Teal, Orange (cool vs warm)
+                    elif n_non_na_values == 3:
+                        color_indices = [0, 1, 2]  # Teal, Orange, Purple (cool, warm, mid)
+                    elif n_non_na_values == 4:
+                        # CRITICAL: Maximum color differentiation across spectrum
+                        # Avoid similar colors (no two greens/teals, no two yellows/oranges)
+                        # Avoid Set3 overlap: Set3 has teal(#8dd3c7), yellow(#ffffb3, #fdb462)
+                        # Choose: Teal(different shade), Orange, Magenta(pink), Olive(green)
+                        # [0]Teal=#1b9e77 (darker than Set3's #8dd3c7) ✓
+                        # [1]Orange=#d95f02 (reddish-orange, distinct from Set3's peachy #fdb462) ✓
+                        # [3]Magenta=#e7298a (hot pink, distinct from Set3's pale pink #fccde5) ✓
+                        # [4]Olive=#66a61e (yellow-green, distinct from Set3's light green #b3de69) ✓
+                        color_indices = [0, 1, 3, 4]  # Teal, Orange, Magenta, Olive
+                        log_message(f"    Dark2 with 4 values: using maximally different colors", print_also=False)
+                        log_message(f"      [0]Teal=#1b9e77, [1]Orange=#d95f02, [3]Magenta=#e7298a, [4]Olive=#66a61e", print_also=False)
+                        log_message(f"      Avoiding overlap with Set3 pastels", print_also=False)
+                    elif n_non_na_values == 5:
+                        color_indices = [0, 1, 2, 3, 4]  # Teal, Orange, Purple, Magenta, Olive
+                    elif n_non_na_values == 6:
+                        color_indices = [0, 1, 2, 3, 4, 5]  # Add Yellow
+                    elif n_non_na_values == 7:
+                        color_indices = [0, 1, 2, 3, 4, 5, 6]  # Add Brown
+                    else:  # 8 values
+                        color_indices = list(range(8))  # Use all colors
+                    
+                    log_message(f"    DARK2 qualitative palette: using indices {color_indices}", print_also=False)
+                    
+                else:
+                    # For NON-DARK2 palettes: special handling for grayscale and Set3
+                    if palette_idx == 2:  # Grayscale
+                        if n_non_na_values == 1:
+                            color_indices = [4]  # Middle
+                        elif n_non_na_values == 2:
+                            color_indices = [1, 8]  # Dark and very light
+                        elif n_non_na_values == 3:
+                            color_indices = [0, 4, 8]  # Dark, Medium, Light
+                        elif n_non_na_values == 4:
+                            color_indices = [0, 3, 6, 8]  # Maximum spread
+                        elif n_non_na_values == 5:
+                            color_indices = [0, 2, 4, 6, 8]
+                        else:
+                            # Evenly distribute
+                            step = (palette_size - 1) / (n_non_na_values - 1)
+                            color_indices = [int(round(j * step)) for j in range(n_non_na_values)]
+                        log_message(f"    GRAYSCALE palette: using indices {color_indices}", print_also=False)
+                    
+                    elif palette_idx == 3:  # Set3-like (bottom bar)
+                        # Sequential selection for Set3
+                        color_indices = list(range(n_non_na_values))
+                        log_message(f"    SET3-LIKE palette: using indices {color_indices}", print_also=False)
+                    
+                    else:  # Backup palette (index 1)
+                        color_indices = list(range(n_non_na_values))
+                        log_message(f"    BACKUP palette: using indices {color_indices}", print_also=False)
+                
+                log_message(f"    Selected {n_non_na_values} colors from palette", print_also=False)
+            else:
+                # More values than colors in palette - cycle through
+                color_indices = list(range(n_non_na_values))
+                log_message(f"    More values than palette colors - cycling through", print_also=False)
+            
+            # Assign colors to values
+            color_idx = 0
             for value in unique_values:
                 if value == 'N.A.':
                     color_dict[value] = '#F0F0F0'  # Light gray for N.A.
                     log_message(f"    N.A.: #F0F0F0 (missing values)", print_also=False)
                 else:
                     if n_non_na_values > 0:
-                        color_dict[value] = chosen_palette[color_idx % len(chosen_palette)]
-                        log_message(f"    {value}: {color_dict[value]}", print_also=False)
+                        palette_idx_to_use = color_indices[color_idx] % palette_size
+                        color_dict[value] = chosen_palette[palette_idx_to_use]
+                        log_message(f"    {value}: {color_dict[value]} (index {palette_idx_to_use})", print_also=False)
                         color_idx += 1
                     else:
                         color_dict[value] = '#CCCCCC'
