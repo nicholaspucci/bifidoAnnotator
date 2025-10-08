@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+include bifidoannotator/data/mapping_file.txt
+# Database hosted on Zenodo (DOI: 10.5281/zenodo.17206993)

@@ -1,0 +1,13 @@
+LICENSE
+MANIFEST.in
+README.md
+setup.py
+bifidoannotator/__init__.py
+bifidoannotator/cli.py
+bifidoannotator.egg-info/PKG-INFO
+bifidoannotator.egg-info/SOURCES.txt
+bifidoannotator.egg-info/dependency_links.txt
+bifidoannotator.egg-info/entry_points.txt
+bifidoannotator.egg-info/requires.txt
+bifidoannotator.egg-info/top_level.txt
+bifidoannotator/data/mapping_file.txt
