@@ -1,0 +1,233 @@
+# bifidoAnnotator
+
+A specialized bioinformatics pipeline for fine-grained annotation of bifidobacterial enzymes involved in human milk glycan (HMG) utilization, with publication-ready visualization capabilities.
+
+## Overview
+
+bifidoAnnotator addresses the critical gap in annotation workflows by providing hierarchical, homology-based protein cluster-level resolution of bifidobacterial enzymes (glycoside hydrolases, GHs) associated with HMG metabolism. Unlike broad GH family-level tools, bifidoAnnotator uses a manually curated database of 22,699 reference sequences organized into 122 functional protein clusters across 13 GH families, enabling identification of specific enzyme variants rather than just general GH family assignments.
+
+## Features
+
+- Hierarchical annotation: Multi-level GH classification with reference-specific thresholds
+- Flexible input: Single file or batch processing modes
+- Quality control: Configurable coverage and bit score filtering
+- Comprehensive output: Detailed tables, summary matrices, and publication-ready visualizations
+- Adaptive visualization: Auto-sizing heatmaps with optional manual control
+- Publication quality: Vector graphics (PDF) and high-resolution raster (PNG) outputs
+- Detailed logging: Complete analysis tracking and statistics
+
+## Installation (Requires python≥3.10)
+
+### Conda Installation 
+```bash
+# Install bifidoAnnotator with all dependencies and packaged database (Recommended)
+conda install -c bioconda bifidoannotator
+
+# Verify installation
+bifidoAnnotator --help
+
+Note: The conda package includes the complete curated database (22,699 sequences) and mapping files, making it ready to use immediately after installation.
+```
+### pip installation (Requires separate MMseqs2 installation)
+```bash
+#Install MMseqs2 first
+conda install mmseqs2
+
+#Then install bifidoAnnotator
+pip install bifidoannotator
+
+#Verify installation
+bifidoAnnotator --help
+```
+
+### Manual Installation and test run
+```bash
+#Create conda environment
+conda create -n bifidoAnnotator python=3.10
+conda activate bifidoAnnotator
+
+#Install dependencies
+conda install mmseqs2
+pip install pandas seaborn matplotlib scipy
+
+#Download bifidoAnnotator and its resources
+git clone https://github.com/nicholaspucci/bifidoAnnotator.git
+cd bifidoAnnotator
+wget https://zenodo.org/records/17206993/files/bifDB_dir.tar.gz
+tar -xvzf bifDB_dir.tar.gz -C database/
+
+#Test run on 9 bifidobacterial genomes
+python script/run_bifidoAnnotator.py -d Benchmark/ --mapping_file database/mapping_file.tsv --bifdb database/bifDB_dir/bifDB -s Benchmark/genome_list_benchmark.txt  -o bifidoAnnotator_output --annotations_file Benchmark/genome_info_benchmark.txt 
+
+```
+
+
+## Usage
+
+### Quick Start (Conda Package)
+```bash
+# Single genome analysis - uses packaged database automatically
+bifidoAnnotator -i input_genome.faa -o output_directory
+
+# Batch processing
+bifidoAnnotator -d genome_directory -s sample_list.txt -o output_directory
+
+# With genome metadata for enhanced visualizations
+bifidoAnnotator -i genome.faa --annotations_file metadata.tsv -o results
+```
+
+### Advanced Usage
+```bash
+# Custom threading and sensitivity
+bifidoAnnotator -i genome.faa --threads 8 --sensitivity 7.5 -o results
+
+# Manual figure sizing
+bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o results
+
+## Input Files
+
+### Required Inputs
+
+1. Protein FASTA files: Amino acid sequences in FASTA format
+   - Single file: Use `-i filename.faa`
+   - Multiple files: Use `-d directory/` with `-s sample_list.txt`
+
+2. Mapping file: TSV file with reference annotations containing:
+   - `Protein_Name`: Reference sequence identifiers
+   - `GH_family`: GH family assignments
+   - `Enzyme`: Enzyme annotations
+   - `Cluster_annotation`: Cluster assignments
+   - `Validation_status`: Quality indicators
+   - `GH_family-F1_threshold`: Identity thresholds for GH family assignment
+   - `GH-cluster threshold`: Identity thresholds for cluster assignment
+   - `HMG-utilization`: HMG-utilization capacity (Yes/No/Unknown)
+
+### Optional Inputs
+
+4. Sample file: Text file listing genome names (required for batch mode)
+   
+   genome1
+   genome2
+   genome3
+
+5. Annotations file: TSV file with genome metadata for enhanced heatmaps
+   ```
+   genome_name	species	isolation_source	other_metadata
+   genome1	B. longum	infant	metadata1
+   genome2	B. breve	adult	metadata2
+   ```
+
+## Output Structure
+
+output_directory/
+├── bifidoAnnotator_log.txt
+├── bifidoAnnotator_tables/
+│   ├── detailed_annotations.tsv
+│   ├── genome_summary.tsv
+│   ├── gh_family_matrix.tsv
+│   ├── enzyme_matrix.tsv
+│   └── cluster_matrix.tsv
+└── bifidoAnnotator_visualizations/
+    ├── gh_family_heatmap.png
+    ├── gh_family_heatmap.pdf
+    ├── cluster_heatmap.png
+    ├── cluster_heatmap.pdf
+    ├── enzyme_heatmap.png
+    └── enzyme_heatmap.pdf
+```
+
+## Output Files
+
+### Tables
+- detailed_annotations.tsv: Complete annotation results with sequence IDs, assignments, and quality metrics
+- genome_summary.tsv: Per-genome summary with copy numbers for each GH family/cluster
+- matrix files: Wide-format presence/absence matrices for downstream analysis
+
+### Visualizations
+- Heatmaps: Hierarchically clustered heatmaps showing GH distribution patterns
+  - Automatic adaptive sizing based on data dimensions
+  - Manual size control via `--gh-figsize`, `--cluster-figsize`, `--enzyme-figsize`
+  - Enhanced versions with genome annotations (if provided)
+  - Both PNG (high-res) and PDF (vector) formats
+
+## Parameters
+
+### Core Parameters
+- `-i, --input_file`: Single input FASTA file
+- `-d, --genome_directory`: Directory containing multiple FASTA files
+- `-s, --sample_file`: List of genome names for batch processing
+- `-o, --output_dir`: Output directory (default: bifidoAnnotator_output)
+- `--bifdb`: Path to MMseqs2 bifidobacterial database
+- `--mapping_file`: Reference annotation mapping file
+
+### Optional Parameters
+- `--annotations_file`: Genome metadata for enhanced visualizations
+- `--threads`: Number of threads for MMseqs2 (default: 4)
+- `--sensitivity`: MMseqs2 sensitivity (default: 7.5)
+- `-hc, --heatmap_col`: Color scheme - 'red' or 'blue' (default: blue)
+- `--gh-figsize`: GH heatmap dimensions (width height)
+- `--cluster-figsize`: Cluster heatmap dimensions (width height)  
+- `--enzyme-figsize`: Enzyme heatmap dimensions (width height)
+
+
+### Annotation Thresholds
+- Coverage threshold: 50% minimum alignment coverage
+- Bit score threshold: 200 minimum bit score
+- Identity thresholds: Reference-specific from mapping file
+
+## Example Workflows
+
+## Quality Control
+
+The pipeline implements multiple quality control measures:
+
+- Coverage filtering: Ensures alignments span sufficient sequence length
+- Bit score thresholds: Filters low-confidence matches
+- Reference-specific thresholds: Uses optimized identity cutoffs per reference sequence
+- Hierarchical validation: Applies different thresholds for family vs. cluster assignment
+
+## Visualization Features
+
+### Heatmap Characteristics
+- Hierarchical clustering: Automatic genome and feature clustering
+- Discrete color scales: Integer copy number representation
+- Publication ready: High-resolution outputs with professional styling
+- Adaptive sizing: Automatic dimension calculation based on data size
+- Annotation integration: Metadata bars with custom color palettes
+- Blue color scheme by default (red available via --heatmap_col/-hc red)
+
+### Size Optimization
+- Auto-calculates optimal dimensions based on:
+  - Number of genomes (affects width)
+  - Number of features (affects height)
+  - Presence of annotation metadata
+- Manual override available for specific requirements
+
+## Data availability
+The bifDB reference database and AIMS bifidobacterial proteomes utilized to demonstrate bifidoAnnotator's capabilities are available on Zenodo (DOI: 10.5281/zenodo.17206993)
+
+## Citation
+
+Please cite this tool in your publications. If you use this software, consider citing:
+
+```
+bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization
+Authors: Nicholas Pucci & Daniel R. Mende
+```
+
+### Links
+GitHub: https://github.com/nicholaspucci/bifidoAnnotator
+PyPI: https://pypi.org/project/bifidoannotator/
+Bioconda: (pending approval)
+Database (Zenodo): https://doi.org/10.5281/zenodo.17206993
+
+## Support
+For questions, bug reports, or feature requests, please open an issue on GitHub or contact the authors.
+
+## License
+MIT License - see LICENSE file for details
+
+## Version History
+
+- v1.0: Complete pipeline integration with adaptive visualization
+- Features hierarchical annotation, quality control, and publication-ready outputs
