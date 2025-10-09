@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="bifidoannotator",
-    version="1.0.1",
+    version="1.0.2",
     author="Nicholas Pucci & Daniel R. Mende",
     author_email="n.pucci@amsterdamumc.nl",
     description="Fine-grained annotation of bifidobacterial enzymes for human milk glycan utilization",
