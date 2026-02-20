@@ -110,7 +110,6 @@ bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o resu
    genome3
 
 5. Annotations file: TSV file with genome metadata for enhanced heatmaps
-   ```
    genome_name	species	isolation_source	other_metadata
    genome1	B. longum	infant	metadata1
    genome2	B. breve	adult	metadata2
@@ -118,7 +117,7 @@ bifidoAnnotator -i genome.faa --gh-figsize 16 20 --cluster-figsize 18 22 -o resu
 
 ## Output Structure
 
-output_directory/
+```output_directory/
 ├── bifidoAnnotator_log.txt
 ├── bifidoAnnotator_tables/
 │   ├── detailed_annotations.tsv
