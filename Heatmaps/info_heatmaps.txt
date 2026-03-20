@@ -1,0 +1,12 @@
+# bifidoAnnotator Example Heatmaps
+ 
+Example heatmaps generated with bifidoAnnotator v2.0 on the AIMS bifidobacterial dataset (49 genomes, 8 species).
+ 
+## GH family and enzyme heatmaps
+Available in blue (default) and red color schemes.
+ 
+## Cluster heatmaps
+Available in blue and red color schemes, with three row filtering options:
+- Default (HMG-utilization = Yes or Unknown)
+- HMG-only (--hmg-only)
+- All clusters (--all-genes)
