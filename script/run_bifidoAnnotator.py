@@ -42,6 +42,7 @@ START_TIME = None
 # Configuration parameters
 COVERAGE_THRESHOLD = 0.5
 BITSCORE_THRESHOLD = 200
+TRANSPORTER_IDENTITY_THRESHOLD = 80.0
 
 def initialize_log(output_dir, args):
     """Initialize the log file"""
@@ -69,12 +70,16 @@ def initialize_log(output_dir, args):
         f.write(f"MMseqs2 sensitivity: {args.sensitivity}\n")
         f.write(f"Coverage threshold: {COVERAGE_THRESHOLD}\n")
         f.write(f"Bitscore threshold: {BITSCORE_THRESHOLD}\n")
+        f.write(f"Transporter database: {args.transporter_db if args.transporter_db else 'None (transporter module disabled)'}\n")
+        f.write(f"Transporter mapping: {args.transporter_mapping if args.transporter_mapping else 'None'}\n")
+        f.write(f"Transporter identity threshold: {TRANSPORTER_IDENTITY_THRESHOLD}%\n")
         
         # Figure size parameters
         f.write(f"GH figure size: {'Auto-adaptive' if not args.gh_figsize else f'{args.gh_figsize[0]}x{args.gh_figsize[1]}'}\n")
         f.write(f"Cluster figure size: {'Auto-adaptive' if not args.cluster_figsize else f'{args.cluster_figsize[0]}x{args.cluster_figsize[1]}'}\n")
         f.write(f"Enzyme figure size: {'Auto-adaptive' if not args.enzyme_figsize else f'{args.enzyme_figsize[0]}x{args.enzyme_figsize[1]}'}\n")
         f.write(f"Heatmap color scheme: {args.heatmap_col}\n")
+        f.write(f"Cluster heatmap row filter: {'HMG only (Yes)' if args.hmg_only else ('HMG + Unknown (Yes/Unknown)' if not args.all_genes else 'All genes')}\n")
         f.write("\n")
 
 def log_message(message, print_also=True):
@@ -91,7 +96,7 @@ def log_section(title):
     message = f"\n{title.upper()}\n" + "-" * len(title) + "\n"
     log_message(message, print_also=False)
 
-def finalize_log(combined_results, genome_names, matrices):
+def finalize_log(combined_results, genome_names, matrices, combined_transporter_results=None):
     """Write final statistics to log file"""
     global START_TIME
     
@@ -142,6 +147,22 @@ def finalize_log(combined_results, genome_names, matrices):
         else:
             f.write("No annotations found across all genomes.\n\n")
         
+        # Transporter statistics
+        if combined_transporter_results is not None and len(combined_transporter_results) > 0:
+            f.write("TRANSPORTER ANNOTATION STATISTICS:\n")
+            f.write(f"  Total transporter sequences annotated: {len(combined_transporter_results)}\n")
+            f.write(f"  Genomes with transporter annotations: {combined_transporter_results['Genome'].nunique()}\n")
+            f.write(f"  Unique transporter genes detected: {combined_transporter_results['Transporter_gene'].nunique()}\n")
+            if 'Transporter_substrate_category' in combined_transporter_results.columns:
+                cat_counts = combined_transporter_results['Transporter_substrate_category'].value_counts()
+                f.write("  Substrate category distribution:\n")
+                for cat, count in cat_counts.items():
+                    f.write(f"    {cat}: {count}\n")
+            f.write(f"  Mean transporter percent identity: {combined_transporter_results['pident'].mean():.1f}%\n\n")
+        elif combined_transporter_results is not None:
+            f.write("TRANSPORTER ANNOTATION STATISTICS:\n")
+            f.write("  No transporter annotations found.\n\n")
+        
         # Output files
         f.write("OUTPUT FILES GENERATED:\n")
         output_files = []
@@ -162,7 +183,7 @@ def finalize_log(combined_results, genome_names, matrices):
         f.write("=" * 80 + "\n")
 
 # Set matplotlib parameters for publication-quality figures
-plt.rcParams['font.family'] = ['Arial', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['font.family'] = ['Nimbus Sans', 'DejaVu Sans', 'sans-serif']
 plt.rcParams['font.size'] = 8
 plt.rcParams['axes.labelsize'] = 10
 plt.rcParams['axes.titlesize'] = 12
@@ -217,6 +238,23 @@ def parse_arguments():
                        help='Enzyme heatmap figure size (width height). If not provided, auto-calculated.')
     parser.add_argument('-hc', '--heatmap_col', type=str, default='blue', choices=['red', 'blue'],
                        help='Color scheme for heatmap and annotations (default: blue)')
+    
+    # Transporter annotation options (optional module)
+    # Cluster heatmap row filtering (mutually exclusive)
+    hmg_filter_group = parser.add_mutually_exclusive_group()
+    hmg_filter_group.add_argument('--hmg-unknown', action='store_true', default=False,
+                       help='Show only clusters with HMG-utilization = Yes or Unknown (default behaviour).')
+    hmg_filter_group.add_argument('--hmg-only', action='store_true', default=False,
+                       help='Show only clusters with HMG-utilization = Yes.')
+    hmg_filter_group.add_argument('--all-genes', action='store_true', default=False,
+                       help='Show all clusters with hits in the cluster heatmap, '
+                            'regardless of HMG-utilization status.')
+
+    # Transporter annotation options (optional module)
+    parser.add_argument('--transporter_db', default=None,
+                       help='Path to MMseqs2 transporter reference database (optional)')
+    parser.add_argument('--transporter_mapping', default=None,
+                       help='Path to transporter mapping TSV file (required if --transporter_db is provided)')
     
     return parser.parse_args()
 
@@ -407,13 +445,257 @@ def process_mmseqs_results(results_file, mapping_df, genome_name):
         log_message(f"  - Missing threshold data: {missing_threshold_data}", print_also=False)
         return pd.DataFrame()
 
+
+def load_transporter_mapping(mapping_file):
+    """Load and validate the transporter mapping file"""
+    log_message(f"Loading transporter mapping file: {mapping_file}")
+    try:
+        mapping_df = pd.read_csv(mapping_file, sep='\t')
+        log_message(f"Loaded {len(mapping_df)} transporter reference entries")
+
+        required_cols = ['Transporter_gene', 'Reference_gene', 'Required by bifidoAnnotator clusters']
+        missing_cols = [col for col in required_cols if col not in mapping_df.columns]
+        if missing_cols:
+            log_message(f"ERROR: Missing required columns in transporter mapping: {missing_cols}")
+            sys.exit(1)
+
+        log_section("TRANSPORTER MAPPING FILE STATISTICS")
+        log_message(f"Total transporter entries: {len(mapping_df)}", print_also=False)
+        log_message(f"Unique transporter genes: {mapping_df['Transporter_gene'].nunique()}", print_also=False)
+        if 'Transporter_substrate_category' in mapping_df.columns:
+            cat_counts = mapping_df['Transporter_substrate_category'].value_counts()
+            log_message("Substrate categories:", print_also=False)
+            for cat, count in cat_counts.items():
+                log_message(f"  {cat}: {count}", print_also=False)
+
+        log_message("Transporter mapping file loaded successfully")
+        return mapping_df
+
+    except Exception as e:
+        log_message(f"ERROR: Failed to load transporter mapping file: {e}")
+        sys.exit(1)
+
+
+def process_transporter_results(results_file, transporter_mapping_df, genome_name):
+    """Process MMseqs2 results for transporters and apply annotation thresholds.
+
+    Thresholds applied:
+      - Coverage >= COVERAGE_THRESHOLD (0.5)
+      - Bit score >= BITSCORE_THRESHOLD (200)
+      - Percent identity >= TRANSPORTER_IDENTITY_THRESHOLD (80%)
+    """
+    if not os.path.exists(results_file):
+        log_message(f"WARNING: Transporter results file not found: {results_file}")
+        return pd.DataFrame()
+
+    try:
+        results_df = pd.read_csv(results_file, sep='\t',
+                                names=['query', 'target', 'pident', 'alnlen', 'mismatch',
+                                      'gapopen', 'qstart', 'qend', 'tstart', 'tend', 'evalue', 'bits'])
+    except Exception as e:
+        log_message(f"WARNING: Failed to load transporter results file {results_file}: {e}")
+        return pd.DataFrame()
+
+    if len(results_df) == 0:
+        log_message(f"  No transporter hits found for {genome_name}")
+        return pd.DataFrame()
+
+    log_message(f"  Transporter raw hits: {len(results_df)}", print_also=False)
+
+    # Keep best hit per query
+    results_df = results_df.loc[results_df.groupby('query')['bits'].idxmax()]
+    log_message(f"  Unique transporter query sequences: {len(results_df)}", print_also=False)
+
+    # Extract gene name from target ID: headers use GeneName__Accession format (e.g. GltA_LNT__Blon_2177)
+    # to allow multiple representative sequences per gene while keeping IDs unique in the DB
+    results_df['Transporter_gene_match'] = results_df['target'].str.split('__').str[0]
+
+    # Merge with transporter mapping on extracted gene name
+    results_df = results_df.merge(transporter_mapping_df, left_on='Transporter_gene_match', right_on='Transporter_gene', how='left')
+    results_df.drop(columns=['Transporter_gene_match'], inplace=True)
+
+    # Calculate coverage
+    results_df['query_coverage'] = (results_df['qend'] - results_df['qstart'] + 1) / results_df['alnlen']
+    results_df['target_coverage'] = (results_df['tend'] - results_df['tstart'] + 1) / results_df['alnlen']
+    results_df['min_coverage'] = np.minimum(results_df['query_coverage'], results_df['target_coverage'])
+
+    # Apply filters step by step and track failures
+    failed_no_mapping = results_df['Transporter_gene'].isna().sum()
+    results_df = results_df[results_df['Transporter_gene'].notna()].copy()
+
+    if len(results_df) == 0:
+        log_message(f"  No transporter hits matched mapping file for {genome_name}")
+        log_message(f"  - No mapping match: {failed_no_mapping}", print_also=False)
+        return pd.DataFrame()
+
+    failed_coverage = (results_df['min_coverage'] < COVERAGE_THRESHOLD).sum()
+    results_df = results_df[results_df['min_coverage'] >= COVERAGE_THRESHOLD].copy()
+
+    failed_bitscore = (results_df['bits'] < BITSCORE_THRESHOLD).sum()
+    results_df = results_df[results_df['bits'] >= BITSCORE_THRESHOLD].copy()
+
+    failed_identity = (results_df['pident'] < TRANSPORTER_IDENTITY_THRESHOLD).sum()
+    results_df = results_df[results_df['pident'] >= TRANSPORTER_IDENTITY_THRESHOLD].copy()
+
+    log_message(f"  - No mapping match: {failed_no_mapping}", print_also=False)
+    log_message(f"  - Failed coverage filter: {failed_coverage}", print_also=False)
+    log_message(f"  - Failed bitscore filter: {failed_bitscore}", print_also=False)
+    log_message(f"  - Failed identity filter (<{TRANSPORTER_IDENTITY_THRESHOLD}%): {failed_identity}", print_also=False)
+
+    if len(results_df) == 0:
+        log_message(f"  No transporter annotations passed thresholds for {genome_name}")
+        return pd.DataFrame()
+
+    results_df['Genome'] = genome_name
+    log_message(f"  Transporter annotations passing filters: {len(results_df)}")
+    return results_df
+
+
+def build_cluster_to_transporter_map(transporter_mapping_df):
+    """Build a mapping from GH cluster name to list of associated transporter genes.
+
+    Parses the 'Required by bifidoAnnotator clusters' column (semicolon-delimited)
+    to create a dict: {cluster_name: [transporter_gene, ...]}
+    """
+    cluster_to_transporters = {}
+    for _, row in transporter_mapping_df.iterrows():
+        transporter_gene = row['Transporter_gene']
+        required_str = str(row.get('Required by bifidoAnnotator clusters', ''))
+        if not required_str or required_str == 'nan':
+            continue
+        clusters = [c.strip() for c in required_str.split(';') if c.strip()]
+        for cluster in clusters:
+            if cluster not in cluster_to_transporters:
+                cluster_to_transporters[cluster] = []
+            if transporter_gene not in cluster_to_transporters[cluster]:
+                cluster_to_transporters[cluster].append(transporter_gene)
+    return cluster_to_transporters
+
+
+def build_genome_transporter_lookup(all_transporter_results):
+    """Build a per-genome lookup of annotated transporter genes.
+
+    Returns: {genome_name: set(transporter_gene, ...)}
+    """
+    lookup = {}
+    if len(all_transporter_results) == 0:
+        return lookup
+    for _, row in all_transporter_results.iterrows():
+        genome = row['Genome']
+        gene = row['Transporter_gene']
+        if genome not in lookup:
+            lookup[genome] = set()
+        lookup[genome].add(gene)
+    return lookup
+
+
+def add_transporter_columns(df, genome_transporter_lookup, cluster_to_transporter_map):
+    """Add Transporter_present and Transporter_ID columns to a GH annotation DataFrame.
+
+    For each GH-annotated row:
+      - Transporter_present: 'Yes' if at least one associated transporter is present
+        in the same genome, 'No' otherwise.
+      - Transporter_ID: semicolon-separated list of found transporter gene names
+        (empty string if none found).
+
+    Matching logic:
+      - For defined clusters (Assigned_cluster has a full name), uses exact match
+        against cluster_to_transporter_map keys.
+      - For undefined clusters (*_cluster_undefined), extracts the GH family prefix
+        and performs prefix match (e.g. 'GH112' matches 'GH112 - *' entries).
+    """
+    transporter_present_list = []
+    transporter_id_list = []
+
+    for _, row in df.iterrows():
+        genome = row['Genome']
+        assigned_cluster = str(row.get('Assigned_cluster', ''))
+
+        genome_transporters = genome_transporter_lookup.get(genome, set())
+        associated_transporters = set()
+
+        if '_cluster_undefined' in assigned_cluster:
+            # Extract GH family prefix: "GH112_cluster_undefined" -> "GH112"
+            gh_prefix = assigned_cluster.replace('_cluster_undefined', '').strip()
+            for cluster_key, t_genes in cluster_to_transporter_map.items():
+                if cluster_key.startswith(gh_prefix + ' - ') or cluster_key.startswith(gh_prefix + '-'):
+                    associated_transporters.update(t_genes)
+        else:
+            associated_transporters = set(cluster_to_transporter_map.get(assigned_cluster, []))
+
+        found_transporters = associated_transporters & genome_transporters
+
+        if found_transporters:
+            transporter_present_list.append('Yes')
+            transporter_id_list.append('; '.join(sorted(found_transporters)))
+        else:
+            transporter_present_list.append('No')
+            transporter_id_list.append('')
+
+    df = df.copy()
+    df['Transporter_present'] = transporter_present_list
+    df['Transporter_ID'] = transporter_id_list
+    return df
+
+
+def generate_transporter_annotations(all_transporter_results, output_dir):
+    """Generate detailed transporter annotation table (one row per annotated protein)."""
+    if len(all_transporter_results) == 0:
+        log_message("WARNING: No transporter results to write")
+        return
+
+    base_cols = ['query', 'Genome', 'Transporter_substrate_category', 'Transporter_gene',
+                 'Transporter description', 'Reference_gene', 'Reference_species',
+                 'Required by bifidoAnnotator clusters', 'pident', 'bits', 'evalue']
+    available_cols = [c for c in base_cols if c in all_transporter_results.columns]
+
+    out_df = all_transporter_results[available_cols].copy()
+    out_path = os.path.join(output_dir, 'bifidoAnnotator_tables', 'transporter_detailed_annotations.tsv')
+    out_df.to_csv(out_path, sep='\t', index=False)
+    log_message("Generated transporter detailed annotations table")
+
+
+def generate_transporter_genome_summary(all_transporter_results, output_dir, all_genome_names):
+    """Generate per-genome transporter summary with copy numbers."""
+    if len(all_transporter_results) == 0:
+        return
+
+    groupby_cols = [c for c in ['Genome', 'Transporter_gene'] if c in all_transporter_results.columns]
+
+    agg_cols = ['Transporter_substrate_category', 'Transporter description',
+                'Reference_gene', 'Reference_species', 'Required by bifidoAnnotator clusters']
+    agg_dict = {c: 'first' for c in agg_cols if c in all_transporter_results.columns}
+    agg_dict['query'] = 'count'
+
+    summary = all_transporter_results.groupby(groupby_cols).agg(agg_dict).reset_index()
+    summary.rename(columns={'query': 'copy_number'}, inplace=True)
+
+    # Add genomes with no transporter annotations
+    if all_genome_names:
+        genomes_with_annotations = set(all_transporter_results['Genome'].unique())
+        missing_genomes = set(all_genome_names) - genomes_with_annotations
+        if missing_genomes:
+            log_message(f"Adding {len(missing_genomes)} genomes with no transporter annotations to summary")
+            missing_rows = []
+            for genome in missing_genomes:
+                row = {'Genome': genome, 'Transporter_gene': pd.NA, 'copy_number': pd.NA}
+                for col in agg_dict:
+                    if col != 'query':
+                        row[col] = pd.NA
+                missing_rows.append(row)
+            summary = pd.concat([summary, pd.DataFrame(missing_rows)], ignore_index=True)
+
+    out_path = os.path.join(output_dir, 'bifidoAnnotator_tables', 'transporter_genome_summary.tsv')
+    summary.to_csv(out_path, sep='\t', index=False)
+    log_message("Generated transporter genome summary table")
+
 def create_output_structure(output_dir):
     """Create output directory structure"""
     subdirs = ['bifidoAnnotator_tables', 'bifidoAnnotator_visualizations']
     for subdir in subdirs:
         os.makedirs(os.path.join(output_dir, subdir), exist_ok=True)
 
-def generate_detailed_annotations(all_results, output_dir):
+def generate_detailed_annotations(all_results, output_dir, genome_transporter_lookup=None, cluster_to_transporter_map=None):
     """Generate detailed annotation tables"""
     if len(all_results) == 0:
         log_message("WARNING: No results to process")
@@ -422,18 +704,23 @@ def generate_detailed_annotations(all_results, output_dir):
     # Base columns that should always be included
     base_columns = ['query', 'Genome', 'GH_family', 'Enzyme', 'Cluster_ID', 
                    'Assigned_cluster', 'Validation_status', 'Reference',
-                   'HMG-utilization', 'pident', 'bits', 'evalue']
+                   'GH_localization', 'HMG-utilization', 'pident', 'bits', 'evalue']
     
     # Select columns that exist in the data
     available_columns = list(all_results.columns)
     final_columns = [col for col in base_columns if col in available_columns]
     detailed_df = all_results[final_columns].copy()
     
+    # Add transporter linkage columns if transporter data is available
+    if genome_transporter_lookup is not None and cluster_to_transporter_map is not None:
+        log_message("Adding transporter linkage columns to detailed annotations...")
+        detailed_df = add_transporter_columns(detailed_df, genome_transporter_lookup, cluster_to_transporter_map)
+    
     detailed_df.to_csv(os.path.join(output_dir, 'bifidoAnnotator_tables', 'detailed_annotations.tsv'), 
                       sep='\t', index=False)
     log_message("Generated detailed annotations table")
 
-def generate_genome_summary(all_results, output_dir, all_genome_names):
+def generate_genome_summary(all_results, output_dir, all_genome_names, genome_transporter_lookup=None, cluster_to_transporter_map=None):
     """Generate per-genome summary with copy numbers - dynamic column selection"""
     if len(all_results) == 0:
         return
@@ -497,6 +784,22 @@ def generate_genome_summary(all_results, output_dir, all_genome_names):
             missing_df = pd.DataFrame(missing_rows)
             genome_summary = pd.concat([genome_summary, missing_df], ignore_index=True)
     
+    # Add transporter linkage columns if transporter data is available
+    if genome_transporter_lookup is not None and cluster_to_transporter_map is not None:
+        log_message("Adding transporter linkage columns to genome summary...")
+        # Only apply to rows that have a valid Assigned_cluster (not NA from missing genomes)
+        has_cluster = genome_summary['Assigned_cluster'].notna()
+        if has_cluster.any():
+            annotated_rows = add_transporter_columns(
+                genome_summary[has_cluster].copy(),
+                genome_transporter_lookup,
+                cluster_to_transporter_map
+            )
+            genome_summary.loc[has_cluster, 'Transporter_present'] = annotated_rows['Transporter_present'].values
+            genome_summary.loc[has_cluster, 'Transporter_ID'] = annotated_rows['Transporter_ID'].values
+        genome_summary['Transporter_present'] = genome_summary['Transporter_present'].fillna('')
+        genome_summary['Transporter_ID'] = genome_summary['Transporter_ID'].fillna('')
+
     genome_summary.to_csv(os.path.join(output_dir, 'bifidoAnnotator_tables', 'genome_summary.tsv'), 
                          sep='\t', index=False)
     log_message("Generated genome summary table")
@@ -546,13 +849,16 @@ def generate_wide_matrices(all_results, output_dir, all_genome_names):
 class HeatmapGenerator:
     """Advanced heatmap generator with improved positioning and color handling"""
     
-    def __init__(self, output_dir, annotations_file=None, heatmap_col='red'):
+    def __init__(self, output_dir, annotations_file=None, heatmap_col='red',
+                 hmg_filter_mode='hmg_unknown', cluster_hmg_map=None):
         """Initialize with output directory and optional annotations file"""
         self.output_dir = Path(output_dir)
         self.tables_dir = self.output_dir / 'bifidoAnnotator_tables'
         self.vis_dir = self.output_dir / 'bifidoAnnotator_visualizations'
         self.annotations_file = annotations_file
         self.heatmap_col = heatmap_col  # Color scheme: 'red' or 'blue'
+        self.hmg_filter_mode = hmg_filter_mode  # 'hmg_only', 'hmg_unknown', or 'all'
+        self.cluster_hmg_map = cluster_hmg_map if cluster_hmg_map is not None else {}
         
         # Matrix file paths
         self.gh_matrix_file = self.tables_dir / 'gh_family_matrix.tsv'
@@ -1022,50 +1328,103 @@ class HeatmapGenerator:
         
         log_message("Distinct color palettes assigned for annotations", print_also=False)
     
-    def calculate_dynamic_positions(self, heatmap_ax, fig, n_annotation_rows, show_column_labels, n_features):
-        """Calculate positions with no overlaps - adaptive spacing based on number of features"""
-        # Force figure to draw to get accurate positions
-        fig.canvas.draw()
+    def setup_hmg_colors(self):
+        """Define row annotation colors for HMG-utilization values.
+
+        'Yes' color contrasts with the heatmap cell color scheme:
+          - Blue heatmap → Yes is red  (#990000, deep red)
+          - Red heatmap  → Yes is blue (#005C99, deep cyan-blue)
+          No      : #1a1a1a  (near-black      — below the grayscale range which starts at #404040)
+          Unknown : #F5C800  (strong warm yellow — distinct from pale Set3 #ffffb3 and all oranges)
+          N.A.    : #d9d9d9  (light gray, neutral)
+        """
+        yes_color = '#990000' if self.heatmap_col == 'blue' else '#005C99'
+        return {
+            'Yes':     yes_color,
+            'No':      '#1a1a1a',
+            'Unknown': '#F5C800',
+            'N.A.':    '#d9d9d9',
+        }
+
+    def add_hmg_row_legend(self, fig, hmg_colors, figsize, position=None, present_values=None):
+        """Add a compact legend for the HMG-utilization row annotation bar,
+        positioned below the heatmap in line with the column annotation legends."""
+        legend_font_size = max(8, min(11, figsize[1] * 0.4))
+        # Only show legend entries for values actually present in the annotation bar
+        patches = [mpatches.Patch(color=color, label=label,
+                                  edgecolor='black', linewidth=0.8)
+                   for label, color in hmg_colors.items()
+                   if label != 'N.A.' and (present_values is None or label in present_values)]
         
-        # Get actual heatmap data area position after layout adjustment
+        if position is not None:
+            legend_left, legend_bottom = position
+        else:
+            legend_left, legend_bottom = 0.01, 0.05
+
+        legend = fig.legend(handles=patches,
+                            title='HMG-utilization',
+                            bbox_to_anchor=(legend_left, legend_bottom),
+                            bbox_transform=fig.transFigure,
+                            loc='upper left',
+                            ncol=1,
+                            fontsize=legend_font_size,
+                            title_fontsize=legend_font_size,
+                            frameon=False,
+                            columnspacing=0.4,
+                            handletextpad=0.2,
+                            handlelength=0.8,
+                            borderaxespad=0,
+                            prop={'family': 'Nimbus Sans', 'size': legend_font_size})
+        legend.get_title().set_fontfamily('Nimbus Sans')
+        legend.get_title().set_fontweight('bold')
+        log_message(f"  Added HMG-utilization legend at ({legend_left:.3f}, {legend_bottom:.3f})", print_also=False)
+
+    def calculate_dynamic_positions(self, heatmap_ax, fig, n_annotation_rows, show_column_labels, n_features):
+        """Calculate positions with no overlaps - uses tight bbox to clear xlabel and tick labels"""
+        # Force figure to draw so tick labels and xlabel are rendered
+        fig.canvas.draw()
+
+        # Get actual heatmap axes position in figure coordinates
         hm_pos = heatmap_ax.get_position()
         hm_left, hm_bottom, hm_width, hm_height = hm_pos.x0, hm_pos.y0, hm_pos.width, hm_pos.height
         hm_right = hm_left + hm_width
-        hm_top = hm_bottom + hm_height
-        
+
         log_message(f"  Heatmap data area: left={hm_left:.3f}, bottom={hm_bottom:.3f}, width={hm_width:.3f}, height={hm_height:.3f}", print_also=False)
-        
-        # Colorbar: Position below the row names
-        cbar_width = 0.12   
-        cbar_height = 0.025 
-        cbar_left = hm_right + 0.02   
-        cbar_bottom = hm_bottom - 0.05  
-        
-        # Legends: Position adaptively based on number of features
-        if show_column_labels:
-            if n_features >= 40:
-                # Many features: can bring legends closer
-                legend_space_needed = 0.10
-            elif n_features >= 20:
-                # Medium features: moderate spacing
-                legend_space_needed = 0.14
-            else:
-                # Few features: need more space
-                legend_space_needed = 0.18
-        else:
-            # No column labels
-            legend_space_needed = 0.06
-        
-        legend_bottom = hm_bottom - legend_space_needed
-        legend_left = hm_left + (hm_width * 0.1)  # Slightly inset for centering
-        
+
+        # Use the tight bounding box of the heatmap axes (includes tick labels and xlabel)
+        # to find the true lowest point of all axes content in figure coordinates.
+        try:
+            renderer = fig.canvas.get_renderer()
+            tight_bbox = heatmap_ax.get_tightbbox(renderer)
+            # Convert from display (pixel) coords to figure fraction
+            fig_bbox = fig.transFigure.inverted().transform(
+                [[tight_bbox.x0, tight_bbox.y0], [tight_bbox.x1, tight_bbox.y1]]
+            )
+            content_bottom = fig_bbox[0, 1]  # y0 of tight bbox in figure coords
+            log_message(f"  Tight bbox bottom (incl. xlabel+ticks): {content_bottom:.3f}", print_also=False)
+        except Exception:
+            # Fallback to heuristic if renderer not available
+            content_bottom = hm_bottom - (0.10 if show_column_labels else 0.04)
+            log_message(f"  Fallback content bottom: {content_bottom:.3f}", print_also=False)
+
+        # Colorbar: just below the heatmap axes right edge (independent of xlabel)
+        cbar_width = 0.12
+        cbar_height = 0.025
+        cbar_left = hm_right + 0.02
+        cbar_bottom = hm_bottom - 0.05
+
+        # Legends: always placed below the full axes content (xlabel + ticks)
+        legend_gap = 0.015   # small breathing room below the xlabel
+        legend_bottom = content_bottom - legend_gap
+        legend_left = hm_left + (hm_width * 0.1)
+
         log_message(f"  Colorbar: below row names at ({cbar_left:.3f}, {cbar_bottom:.3f})", print_also=False)
-        log_message(f"  Legends: adaptive spacing (n_features={n_features}) at ({legend_left:.3f}, {legend_bottom:.3f})", print_also=False)
-        
+        log_message(f"  Legends: below tight bbox at ({legend_left:.3f}, {legend_bottom:.3f})", print_also=False)
+
         return {
             'colorbar': (cbar_left, cbar_bottom, cbar_width, cbar_height),
             'legend': (legend_left, legend_bottom),
-            'heatmap': (hm_left, hm_bottom, hm_width, hm_height)
+            'heatmap': (hm_left, hm_bottom, hm_width, hm_height),
         }
     
     def create_clustermap(self, data, title, output_file_base, manual_figsize=None, matrix_name='unknown'):
@@ -1105,6 +1464,35 @@ class HeatmapGenerator:
         if len(data_filtered) == 0:
             log_message("WARNING: No non-zero features found")
             return None
+        
+        # --- HMG-utilization row filtering and row annotation (cluster heatmap only) ---
+        row_colors_series = None
+        hmg_colors = None
+        if matrix_name == 'cluster' and self.cluster_hmg_map:
+            hmg_colors = self.setup_hmg_colors()
+            
+            if self.hmg_filter_mode in ('hmg_unknown', 'hmg_only'):
+                keep_values = ('Yes',) if self.hmg_filter_mode == 'hmg_only' else ('Yes', 'Unknown')
+                hmg_keep = []
+                for cluster in data_filtered.index:
+                    val = self.cluster_hmg_map.get(cluster, 'Unknown')
+                    if not val or pd.isna(val):
+                        val = 'Unknown'
+                    hmg_keep.append(val in keep_values)
+                data_filtered = data_filtered[hmg_keep]
+                log_message(f"  HMG filter ({'/'.join(keep_values)} only): {sum(hmg_keep)} of {len(hmg_keep)} clusters retained", print_also=False)
+                
+                if len(data_filtered) == 0:
+                    log_message("WARNING: No clusters remaining after HMG filter")
+                    return None
+            
+            # Track which HMG values are present (for the legend)
+            # In hmg_only mode every visible row is 'Yes' — bar and legend are redundant
+            if self.hmg_filter_mode != 'hmg_only':
+                row_colors_series = True  # flag: bar will be drawn
+                log_message(f"  HMG row annotation bar prepared ({len(data_filtered)} rows)", print_also=False)
+            else:
+                log_message(f"  HMG row annotation bar suppressed (--hmg-only: all rows are Yes)", print_also=False)
         
         # Check if we should show column labels
         n_genomes = len(data_filtered.columns)
@@ -1161,39 +1549,28 @@ class HeatmapGenerator:
         
         log_message(f"  Dendrogram ratio: {dendrogram_ratio}, Colors ratio: {colors_ratio:.3f}", print_also=False)
         
-        # Create clustermap with discrete colors and black borders
+        # Build unified clustermap kwargs
+        clustermap_kwargs = dict(
+            method='average',
+            metric='euclidean',
+            cmap=cmap,
+            norm=norm,
+            figsize=figsize,
+            dendrogram_ratio=dendrogram_ratio,
+            linewidths=1.2,
+            linecolor='black',
+            xticklabels=show_column_labels,
+            yticklabels=True,
+            tree_kws={'linewidths': 1.5}
+        )
         if annotation_color_lists:
-            g = sns.clustermap(
-                data_filtered,
-                method='average',
-                metric='euclidean',
-                cmap=cmap,
-                norm=norm,  
-                figsize=figsize,
-                dendrogram_ratio=dendrogram_ratio,
-                colors_ratio=colors_ratio,
-                col_colors=annotation_color_lists,
-                linewidths=1.5,
-                linecolor='black',
-                xticklabels=show_column_labels,
-                yticklabels=True,
-                tree_kws={'linewidths': 1.5}
-            )
-        else:
-            g = sns.clustermap(
-                data_filtered,
-                method='average',
-                metric='euclidean',
-                cmap=cmap,
-                norm=norm,  
-                figsize=figsize,
-                dendrogram_ratio=dendrogram_ratio,
-                linewidths=1.5,
-                linecolor='black',
-                xticklabels=show_column_labels,
-                yticklabels=True,
-                tree_kws={'linewidths': 1.5}
-            )
+            clustermap_kwargs['col_colors'] = annotation_color_lists
+            clustermap_kwargs['colors_ratio'] = colors_ratio
+        # NOTE: do NOT pass row_colors to seaborn — we draw the HMG bar manually
+        # after layout is finalised so it is guaranteed to align with the heatmap.
+
+        # Create clustermap with discrete colors and black borders
+        g = sns.clustermap(data_filtered, **clustermap_kwargs)
         
         # Hide default colorbar completely
         if hasattr(g, 'ax_cbar') and g.ax_cbar is not None:
@@ -1228,26 +1605,140 @@ class HeatmapGenerator:
         
         # Force layout update
         g.fig.canvas.draw()
-        
-        # Calculate positions - pass n_features for adaptive spacing
+
+        # HMG row annotation bar is drawn AFTER all layout changes (see below)
+
+        # Customize the plot - must happen BEFORE calculate_dynamic_positions
+        # so the tight bbox includes the xlabel and tick labels
+        g.ax_heatmap.set_xlabel('Genomes', fontsize=10, fontweight='bold', fontfamily='Nimbus Sans')
+        g.ax_heatmap.set_ylabel('Features', fontsize=10, fontweight='bold', fontfamily='Nimbus Sans')
+
+        if show_column_labels:
+            plt.setp(g.ax_heatmap.get_xticklabels(), rotation=90, fontsize=8, fontfamily='Nimbus Sans')
+
+        plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0, fontsize=8, fontfamily='Nimbus Sans')
+
+        # Calculate positions after labels are set so tight bbox is accurate
         n_annotation_rows = len(annotation_color_lists) if annotation_color_lists else 0
         positions = self.calculate_dynamic_positions(g.ax_heatmap, g.fig, n_annotation_rows, show_column_labels, len(data_filtered))
-        
-        # Customize the plot
-        g.ax_heatmap.set_xlabel('Genomes', fontsize=10, fontweight='bold', fontfamily='Arial')
-        g.ax_heatmap.set_ylabel('Features', fontsize=10, fontweight='bold', fontfamily='Arial')
-        
-        if show_column_labels:
-            plt.setp(g.ax_heatmap.get_xticklabels(), rotation=90, fontsize=8, fontfamily='Arial')
-        
-        plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0, fontsize=8, fontfamily='Arial')
         
         # Add annotation elements if available
         if annotation_color_lists:
             self.add_annotation_labels(g.fig, g)
             self.create_annotation_separation(g)
-            self.add_multiple_legends(g.fig, positions['legend'], figsize)
+            legend_end_x = self.add_multiple_legends(g.fig, positions['legend'], figsize)
         
+        # --- Draw HMG row annotation bar (after ALL layout changes) ---
+        # Strategy: blended transform with x in AXES coordinates and y in DATA
+        # coordinates.
+        #
+        # Why this is robust:
+        #   • Axes-coord x   → the bar position is always expressed as a fraction
+        #     of the heatmap width, so it glues itself to the left edge of the
+        #     heatmap regardless of subplots_adjust, create_annotation_separation,
+        #     tight_layout, or any other layout operation that may have run above.
+        #   • Data-coord y   → seaborn places display row i at data y = [i, i+1]
+        #     (ylim = [n_rows, 0], inverted).  Rectangles with y=i, height=1 map
+        #     perfectly onto those cell boundaries by definition — no manual pixel
+        #     arithmetic needed.
+        #
+        # Previous failures recap:
+        #   • figure-coord x (approach 8 original): bar_left_fig was computed from
+        #     get_position() before create_annotation_separation ran, then the axes
+        #     moved — x no longer matched the heatmap edge.
+        #   • plt.Rectangle does not exist in matplotlib.pyplot → AttributeError.
+        if row_colors_series is not None and hmg_colors is not None:
+            import matplotlib.transforms as mtransforms
+
+            ax_hm = g.ax_heatmap
+
+            # Re-query position after ALL layout modifications are complete.
+            g.fig.canvas.draw()
+            hm_pos = ax_hm.get_position()
+
+            # Bar geometry in AXES x-coordinates (negative = left of the heatmap)
+            bar_width_ax = 0.045   # bar width as a fraction of the heatmap axes width
+            gap_ax       = 0.020   # gap between bar right edge and heatmap left edge
+            bar_right_ax = -gap_ax
+            bar_left_ax  = bar_right_ax - bar_width_ax
+
+            # Blended transform: x in axes coords, y in data coords.
+            # Both are live references — alignment is preserved after any future
+            # position change.
+            trans = mtransforms.blended_transform_factory(
+                ax_hm.transAxes,   # x: 0 = heatmap left, negative = to the left
+                ax_hm.transData    # y: row i occupies [i, i+1]
+            )
+
+            # Shift the row dendrogram left so it doesn't overlap the bar.
+            # Convert axes-coord bar extent to figure coords for the shift amount.
+            shift_fig = (bar_width_ax + gap_ax) * hm_pos.width
+            if hasattr(g, 'ax_row_dendrogram') and g.ax_row_dendrogram is not None:
+                dend_pos = g.ax_row_dendrogram.get_position()
+                g.ax_row_dendrogram.set_position([
+                    dend_pos.x0 - shift_fig,
+                    dend_pos.y0,
+                    dend_pos.width,
+                    dend_pos.height
+                ])
+
+            n_rows = len(data_filtered.index)
+            if hasattr(g, 'dendrogram_row') and g.dendrogram_row is not None:
+                row_order = g.dendrogram_row.reordered_ind
+            else:
+                row_order = list(range(n_rows))
+
+            # Draw one rectangle per display row.
+            # display row i (0 = topmost after clustering) → data y from i to i+1.
+            # mpatches.Rectangle(xy, width, height): xy is the BOTTOM-LEFT corner
+            # in the transform's coordinate space.  With an inverted y-axis,
+            # "lower data value = higher on screen", so y=i is the top of cell i —
+            # but matplotlib's Rectangle still fills [i, i+1] correctly.
+            for display_row, orig_idx in enumerate(row_order):
+                cluster = data_filtered.index[orig_idx]
+                val = self.cluster_hmg_map.get(cluster, '')
+                if not val or (isinstance(val, float) and pd.isna(val)):
+                    val = 'Unknown'
+                color = hmg_colors.get(val, hmg_colors['Unknown'])
+                rect = mpatches.Rectangle(
+                    (bar_left_ax, display_row),   # (x_axes, y_data)
+                    bar_width_ax, 1,               # (width_axes, height_data)
+                    transform=trans,
+                    facecolor=color, edgecolor='black', linewidth=0.8,
+                    clip_on=False, zorder=5
+                )
+                ax_hm.add_patch(rect)
+
+            # Label: convert bar centre from axes-x to figure-x for fig.text()
+            bar_center_fig = hm_pos.x0 + (bar_left_ax + bar_width_ax / 2) * hm_pos.width
+            label_y_fig = hm_pos.y0 - 0.01
+            g.fig.text(
+                bar_center_fig, label_y_fig,
+                'HMG-utilization',
+                fontsize=11, fontfamily='Nimbus Sans', fontweight='bold',
+                rotation=90, va='top', ha='center',
+                transform=g.fig.transFigure
+            )
+
+            log_message(f"  Drew HMG row bar ({n_rows} rows, transAxes+transData blended transform)", print_also=False)
+
+        # Add HMG-utilization legend
+        if row_colors_series is not None and hmg_colors is not None:
+            present_hmg_values = set(
+                self.cluster_hmg_map.get(cluster, 'Unknown') or 'Unknown'
+                for cluster in data_filtered.index
+            )
+            if annotation_color_lists:
+                # Column annotations present: place immediately after the last column legend
+                _, legend_bottom = positions['legend']
+                hmg_legend_position = (legend_end_x, legend_bottom)
+            else:
+                # No column annotations: place to the right of the colorbar
+                cbar_left, cbar_bottom, cbar_width, cbar_height = positions['colorbar']
+                hmg_legend_position = (cbar_left + cbar_width + 0.03, cbar_bottom)
+            self.add_hmg_row_legend(g.fig, hmg_colors, figsize, position=hmg_legend_position,
+                                    present_values=present_hmg_values)
+
         # Create colorbar
         self.add_dynamic_colorbar(g.fig, positions['colorbar'], cmap, vmin, vmax, discrete_levels)
         
@@ -1293,7 +1784,7 @@ class HeatmapGenerator:
         
         # Label below colorbar
         cbar.set_label('Copy Number', rotation=0, labelpad=8, 
-                      fontsize=9, fontfamily='Arial', ha='center')
+                      fontsize=9, fontfamily='Nimbus Sans', ha='center')
         
         # Set appropriate ticks
         max_ticks = min(8, len(discrete_levels))
@@ -1315,7 +1806,7 @@ class HeatmapGenerator:
         cbar.ax.tick_params(labelsize=8, length=3, pad=2)
         
         for label in cbar.ax.get_xticklabels():
-            label.set_fontfamily('Arial')
+            label.set_fontfamily('Nimbus Sans')
             label.set_fontsize(8)
         
         # Clean appearance
@@ -1397,9 +1888,9 @@ class HeatmapGenerator:
                               handletextpad=0.2,      
                               handlelength=0.8,       
                               borderaxespad=0,
-                              prop={'family': 'Arial', 'size': legend_font_size})
+                              prop={'family': 'Nimbus Sans', 'size': legend_font_size})
             
-            legend.get_title().set_fontfamily('Arial')
+            legend.get_title().set_fontfamily('Nimbus Sans')
             legend.get_title().set_fontweight('bold')
             
             log_message(f"    '{col}': {n_values} values, {ncol} cols, at x={current_x:.3f}", print_also=False)
@@ -1408,6 +1899,7 @@ class HeatmapGenerator:
             current_x += est_width + spacing
         
         log_message(f"  Legends positioned below column names with no overlaps", print_also=False)
+        return current_x
     
     def create_annotation_separation(self, clustermap_obj):
         """Create visual separation between annotation bars and heatmap"""
@@ -1456,7 +1948,7 @@ class HeatmapGenerator:
                         horizontalalignment='left',
                         fontsize=11,
                         fontweight='bold',
-                        fontfamily='Arial')
+                        fontfamily='Nimbus Sans')
     
     def generate_heatmaps(self, gh_figsize=None, cluster_figsize=None, enzyme_figsize=None):
         """Generate all heatmaps with adaptive or manual sizing"""
@@ -1534,6 +2026,12 @@ def main():
         print("ERROR: --sample_file is required when using --genome_directory")
         sys.exit(1)
     
+    # Validate transporter arguments
+    if bool(args.transporter_db) != bool(args.transporter_mapping):
+        print("ERROR: --transporter_db and --transporter_mapping must both be provided together")
+        sys.exit(1)
+    run_transporter_module = bool(args.transporter_db)
+    
     # Create output structure
     create_output_structure(args.output_dir)
     
@@ -1542,6 +2040,15 @@ def main():
     
     # Load mapping file
     mapping_df = load_mapping_file(args.mapping_file)
+    
+    # Load transporter mapping if transporter module is enabled
+    transporter_mapping_df = None
+    cluster_to_transporter_map = {}
+    if run_transporter_module:
+        log_message("\nTransporter module enabled")
+        transporter_mapping_df = load_transporter_mapping(args.transporter_mapping)
+        cluster_to_transporter_map = build_cluster_to_transporter_map(transporter_mapping_df)
+        log_message(f"Built cluster-to-transporter map: {len(cluster_to_transporter_map)} cluster entries")
     
     # Log input processing
     log_section("INPUT PROCESSING")
@@ -1583,6 +2090,7 @@ def main():
     
     # Process each genome
     all_results = []
+    all_transporter_results = []
     
     for input_file, genome_name in zip(input_files, genome_names):
         log_message(f"\nProcessing: {genome_name}")
@@ -1592,41 +2100,97 @@ def main():
         file_size = os.path.getsize(input_file) / 1024  # KB
         log_message(f"File size: {file_size:.1f} KB", print_also=False)
         
-        # Run MMseqs2 search
+        # --- GH annotation ---
         output_prefix = os.path.join(args.output_dir, f"{genome_name}")
         success = run_mmseqs_search(input_file, args.bifdb, output_prefix, 
                                   args.threads, args.sensitivity)
         
         if success:
-            # Process results
             results_file = f"{output_prefix}_results.tsv"
             genome_results = process_mmseqs_results(results_file, mapping_df, genome_name)
             
             if not genome_results.empty:
                 all_results.append(genome_results)
             
-            # Clean up individual result files
             if os.path.exists(results_file):
                 os.remove(results_file)
         else:
             log_message(f"Failed to process {genome_name}")
+        
+        # --- Transporter annotation (optional) ---
+        if run_transporter_module:
+            t_output_prefix = os.path.join(args.output_dir, f"{genome_name}_transporter")
+            t_success = run_mmseqs_search(input_file, args.transporter_db, t_output_prefix,
+                                         args.threads, args.sensitivity)
+            if t_success:
+                t_results_file = f"{t_output_prefix}_results.tsv"
+                t_genome_results = process_transporter_results(t_results_file, transporter_mapping_df, genome_name)
+                
+                if not t_genome_results.empty:
+                    all_transporter_results.append(t_genome_results)
+                
+                if os.path.exists(t_results_file):
+                    os.remove(t_results_file)
+            else:
+                log_message(f"Failed to run transporter search for {genome_name}")
     
     # Log output generation section
     log_section("OUTPUT GENERATION")
     
-    # Combine all results
+    # Build transporter lookup for GH linkage columns
+    combined_transporter_results = pd.DataFrame()
+    genome_transporter_lookup = {}
+    if run_transporter_module and all_transporter_results:
+        combined_transporter_results = pd.concat(all_transporter_results, ignore_index=True)
+        genome_transporter_lookup = build_genome_transporter_lookup(combined_transporter_results)
+        log_message(f"Transporter annotations: {len(combined_transporter_results)} total across "
+                   f"{combined_transporter_results['Genome'].nunique()} genome(s)")
+    elif run_transporter_module:
+        log_message("WARNING: No transporter annotations found across all input genomes")
+    
+    # Combine all GH results
     if all_results:
         combined_results = pd.concat(all_results, ignore_index=True)
         
-        # Generate outputs
+        # Generate GH outputs (with transporter columns if available)
         log_message("\nGenerating output files...")
-        generate_detailed_annotations(combined_results, args.output_dir)
-        generate_genome_summary(combined_results, args.output_dir, genome_names)
+        generate_detailed_annotations(combined_results, args.output_dir,
+                                      genome_transporter_lookup if run_transporter_module else None,
+                                      cluster_to_transporter_map if run_transporter_module else None)
+        generate_genome_summary(combined_results, args.output_dir, genome_names,
+                                genome_transporter_lookup if run_transporter_module else None,
+                                cluster_to_transporter_map if run_transporter_module else None)
         matrices = generate_wide_matrices(combined_results, args.output_dir, genome_names)
         
+        # Generate transporter-specific output tables if module was run
+        if run_transporter_module:
+            log_section("TRANSPORTER OUTPUT GENERATION")
+            generate_transporter_annotations(combined_transporter_results, args.output_dir)
+            generate_transporter_genome_summary(combined_transporter_results, args.output_dir, genome_names)
+        
+        # Build cluster → HMG-utilization mapping for row annotation/filtering
+        # Use first non-empty HMG value found per cluster
+        cluster_hmg_map = {}
+        if 'HMG-utilization' in combined_results.columns:
+            hmg_lookup = (combined_results[combined_results['HMG-utilization'].notna() &
+                                           (combined_results['HMG-utilization'] != '')]
+                          .drop_duplicates(subset='Assigned_cluster')
+                          .set_index('Assigned_cluster')['HMG-utilization']
+                          .to_dict())
+            cluster_hmg_map = hmg_lookup
+            log_message(f"Built cluster HMG-utilization map: {len(cluster_hmg_map)} entries", print_also=False)
+
+        if args.hmg_only:
+            hmg_filter_mode = 'hmg_only'
+        elif args.all_genes:
+            hmg_filter_mode = 'all'
+        else:
+            hmg_filter_mode = 'hmg_unknown'  # default
+
         # Generate advanced heatmaps
         log_section("VISUALIZATION GENERATION")
-        heatmap_generator = HeatmapGenerator(args.output_dir, args.annotations_file, args.heatmap_col)
+        heatmap_generator = HeatmapGenerator(args.output_dir, args.annotations_file, args.heatmap_col,
+                                             hmg_filter_mode=hmg_filter_mode, cluster_hmg_map=cluster_hmg_map)
         heatmap_success = heatmap_generator.generate_heatmaps(
             gh_figsize=args.gh_figsize,
             cluster_figsize=args.cluster_figsize,
@@ -1639,19 +2203,28 @@ def main():
             log_message("WARNING: Heatmap generation encountered errors")
         
         log_message(f"\nAnalysis complete! Results saved in: {args.output_dir}")
-        log_message(f"Total annotations: {len(combined_results)}")
+        log_message(f"Total GH annotations: {len(combined_results)}")
         log_message(f"Unique genomes: {combined_results['Genome'].nunique()}")
         log_message(f"GH families detected: {combined_results['GH_family'].nunique()}")
+        if run_transporter_module and len(combined_transporter_results) > 0:
+            log_message(f"Total transporter annotations: {len(combined_transporter_results)}")
         
         # Finalize log with comprehensive statistics
-        finalize_log(combined_results, genome_names, matrices)
+        finalize_log(combined_results, genome_names, matrices,
+                     combined_transporter_results if run_transporter_module else None)
         
     else:
-        log_message("\nWARNING: No annotations found across all input genomes")
-        log_message("No output files generated.")
+        log_message("\nWARNING: No GH annotations found across all input genomes")
+        log_message("No GH output files generated.")
         
-        # Still write a final log
-        finalize_log(pd.DataFrame(), genome_names, (None, None, None))
+        # Still generate transporter outputs if available
+        if run_transporter_module and len(combined_transporter_results) > 0:
+            log_section("TRANSPORTER OUTPUT GENERATION")
+            generate_transporter_annotations(combined_transporter_results, args.output_dir)
+            generate_transporter_genome_summary(combined_transporter_results, args.output_dir, genome_names)
+        
+        finalize_log(pd.DataFrame(), genome_names, (None, None, None),
+                     combined_transporter_results if run_transporter_module else None)
     
     print("=" * 80)
     print(f"Complete log saved to: {os.path.join(args.output_dir, 'bifidoAnnotator_log.txt')}")
