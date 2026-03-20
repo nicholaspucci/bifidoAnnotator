@@ -15,7 +15,8 @@ setup(
     packages=find_packages(),
     package_data={
         'bifidoannotator': [
-            'database/mapping_file.tsv',
+            'data/mapping_file.tsv',
+            'data/mapping_file_transporters.tsv',
         ],
     },
     include_package_data=True,

@@ -133,22 +133,27 @@ def download_database():
 
 
 def get_default_paths():
-    """Get default paths for the GH database and mapping file."""
+    """Get default paths for the GH database, GH mapping file, and transporter mapping file."""
     db_dir = DEFAULT_DB_DIR
     bifdb_path = os.path.join(db_dir, 'bifDB_dir', 'bifDB')
     mapping_path = os.path.join(db_dir, 'mapping_file.tsv')
+    transporter_mapping_path = None
 
-    # Try packaged mapping file first
+    # Try packaged mapping files first (pip installation)
     try:
         import pkg_resources
         package_mapping = pkg_resources.resource_filename(
-            'bifidoannotator', 'database/mapping_file.tsv')
+            'bifidoannotator', 'data/mapping_file.tsv')
         if os.path.exists(package_mapping):
             mapping_path = package_mapping
+        package_tp_mapping = pkg_resources.resource_filename(
+            'bifidoannotator', 'data/mapping_file_transporters.tsv')
+        if os.path.exists(package_tp_mapping):
+            transporter_mapping_path = package_tp_mapping
     except Exception:
         pass
 
-    return bifdb_path, mapping_path
+    return bifdb_path, mapping_path, transporter_mapping_path
 
 
 # =============================================================================
@@ -321,7 +326,7 @@ def check_dependencies():
 
 def parse_arguments():
     """Parse command line arguments."""
-    default_bifdb, default_mapping = get_default_paths()
+    default_bifdb, default_mapping, default_tp_mapping = get_default_paths()
 
     parser = argparse.ArgumentParser(
         description="Combined bifidoAnnotator: Complete GH annotation and visualization pipeline",
@@ -404,7 +409,7 @@ downloaded from Zenodo (DOI: 10.5281/zenodo.19133752). This only happens once.
     # Transporter module (optional)
     parser.add_argument('--transporter_db', default=None,
                         help='Path to MMseqs2 transporter reference database (optional)')
-    parser.add_argument('--transporter_mapping', default=None,
+    parser.add_argument('--transporter_mapping', default=default_tp_mapping,
                         help='Path to transporter mapping TSV file '
                              '(required if --transporter_db is provided)')
 
@@ -421,7 +426,9 @@ downloaded from Zenodo (DOI: 10.5281/zenodo.19133752). This only happens once.
             print(f"3. Verify bifDB file exists at: "
                   f"{os.path.join(DEFAULT_DB_DIR, 'bifDB_dir', 'bifDB')}")
             sys.exit(1)
-        args.bifdb, args.mapping_file = get_default_paths()
+        args.bifdb, args.mapping_file, detected_tp_mapping = get_default_paths()
+        if detected_tp_mapping and not args.transporter_mapping:
+            args.transporter_mapping = detected_tp_mapping
 
     # Final validation
     if not os.path.exists(args.bifdb):
