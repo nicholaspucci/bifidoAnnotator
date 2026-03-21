@@ -58,14 +58,19 @@ cd bifidoAnnotator
 wget https://zenodo.org/records/19133752/files/bifDB_dir.tar.gz
 tar -xvzf bifDB_dir.tar.gz -C database/
 
-# Test run on 9 bifidobacterial genomes
+wget https://zenodo.org/records/19133752/files/bifTPDB_dir.tar.gz
+tar -xvzf bifTPDB_dir.tar.gz -C database/
+
+# Test run on 9 bifidobacterial genomes (with transporter module)
 python script/run_bifidoAnnotator.py \
     -d Benchmark/ \
     --mapping_file database/mapping_file.tsv \
     --bifdb database/bifDB_dir/bifDB \
     -s Benchmark/genome_list_benchmark.txt \
     -o bifidoAnnotator_output \
-    --annotations_file Benchmark/genome_info_benchmark.txt
+    --annotations_file Benchmark/genome_info_benchmark.txt \
+    --transporter_db database/bifTPDB_dir/bifTPDB \
+    --transporter_mapping database/mapping_file_transporters.tsv
 ```
 
 ## Usage
