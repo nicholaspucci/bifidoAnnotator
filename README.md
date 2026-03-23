@@ -4,7 +4,7 @@ A specialized bioinformatics pipeline for fine-grained annotation of bifidobacte
 
 ## Overview
 
-bifidoAnnotator addresses the critical gap in annotation workflows by providing hierarchical, homology-based protein cluster-level resolution of bifidobacterial enzymes (glycoside hydrolases, GHs) associated with HMG metabolism. Unlike broad GH family-level tools, bifidoAnnotator uses a manually curated database of 22,699 reference sequences organized into 122 functional protein clusters across 13 GH families, enabling identification of specific enzyme variants rather than just general GH family assignments.
+bifidoAnnotator provides accurate, fast and user-friendly hierarchical, homology-based protein cluster-level resolution of bifidobacterial enzymes (glycoside hydrolases, GHs) associated with HMG metabolism. Unlike broad GH family-level tools, bifidoAnnotator uses a manually curated database of 22,580 reference sequences organized into 108 functional protein clusters across 13 GH families, enabling identification of specific enzyme variants rather than just general GH family assignments.
 
 ## Features
 
@@ -13,7 +13,6 @@ bifidoAnnotator addresses the critical gap in annotation workflows by providing 
 - **Flexible input**: Single file or batch processing modes
 - **Quality control**: Configurable coverage and bit score filtering
 - **Comprehensive output**: Detailed tables, summary matrices, and publication-ready visualizations
-- **Adaptive visualization**: Auto-sizing heatmaps with optional manual control
 - **Publication quality**: Vector graphics (PDF) and high-resolution raster (PNG) outputs
 - **Detailed logging**: Complete analysis tracking
 
