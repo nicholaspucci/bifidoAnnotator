@@ -310,3 +310,26 @@ MIT License - see LICENSE file for details
 
 - **v2.0**: Transporter annotation module; HMG-utilization row annotation bar on cluster heatmap; cluster row filtering flags (`--hmg-only`, `--hmg-unknown`, `--all-genes`); updated bifDB with subcellular localization, refined cluster annotations and outlier removal; new bifTPDB transporter database; updated Zenodo DOI
 - **v1.0**: Complete pipeline integration with adaptive visualization, hierarchical annotation, quality control, and publication-ready outputs
+
+## Citation
+
+If you use bifidoAnnotator in your research, please cite:
+
+> Pucci, N. & Mende, D. R. (2026). bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization. *Microbial Genomics*. https://doi.org/10.1099/mgen.0.001702
+
+### BibTeX
+
+```bibtex
+@article{pucci2026bifidoannotator,
+  title   = {bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization},
+  author  = {Pucci, Nicholas and Mende, Daniel R.},
+  journal = {Microbial Genomics},
+  year    = {2026},
+  doi     = {10.1099/mgen.0.001702},
+  url     = {https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.001702}
+}
+```
+
+Please also cite the bifDB reference database if used:
+
+> Pucci, N. & Mende, D. R. (2025). bifDB: a curated reference database for bifidobacterial glycoside hydrolases. *Zenodo*. https://doi.org/10.5281/zenodo.17206993
