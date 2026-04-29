@@ -317,19 +317,8 @@ If you use bifidoAnnotator in your research, please cite:
 
 > Pucci, N. & Mende, D. R. (2026). bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization. *Microbial Genomics*. https://doi.org/10.1099/mgen.0.001702
 
-### BibTeX
+Please also cite the reference databases:
 
-```bibtex
-@article{pucci2026bifidoannotator,
-  title   = {bifidoAnnotator: fine-grained annotation of bifidobacterial glycoside hydrolases for human milk glycan utilization},
-  author  = {Pucci, Nicholas and Mende, Daniel R.},
-  journal = {Microbial Genomics},
-  year    = {2026},
-  doi     = {10.1099/mgen.0.001702},
-  url     = {https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.001702}
-}
-```
+> Pucci, N. & Mende, D. R. (2026). bifidoAnnotator v2.0. *Zenodo*. https://doi.org/10.5281/zenodo.19133752
 
-Please also cite the bifDB reference database if used:
-
-> Pucci, N. & Mende, D. R. (2025). bifDB: a curated reference database for bifidobacterial glycoside hydrolases. *Zenodo*. https://doi.org/10.5281/zenodo.17206993
+> **Note:** v1.0 of the database is archived at https://doi.org/10.5281/zenodo.17206993 for reproducibility of older analyses.
